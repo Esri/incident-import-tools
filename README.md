@@ -6,6 +6,8 @@ Geometry can be assigned to features using provided coordinate values in a known
 
 These scripts can be scheduled using Windows Task Scheduler to automatically update the feature class and service.
 
+![Toolbox](images/Toolbox.png)
+
 ## Features
 
 * Publish features from a spreadsheet to an existing service using ArcGIS Online or ArcGIS for Server
