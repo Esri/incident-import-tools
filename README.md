@@ -13,12 +13,29 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 * Optionally, avoid creating duplicate records by update existing records and only adding new features to the service
 * Run the tools manually through ArcMap or ArcCatalog, or schedule them to run regularly using Windows Task Sceduler
 
+## Instructions
 
-## Usage Notes
+1. Download and unzip these tools.
+2. Download and unzip requests-master.zip.
+3. Open requests-master and copy the requests folder into the scripts folder of the incident import tools.
+4. In ArcMap or ArcCatalog, open the Configure Incident Imports tool. Complete the parameters and click OK to create a configuration file storing these parameter values.
+5. Run the Import Incidents tool, using the previously created configuration file as input. Be default this configuration file is saved to the scripts folder, but it may be moved to another location if necessary.
+6. Examine the output messaging and reports for comments on failures and data errors.
+7. Optionally, set up Windows Task Scheduler to run import\_publish_incidents.py automatically on a schedule with the configuration file as input.
+
+## Requirements
+
+
+- ArcGIS for Desktop
+- [Requests module](https://github.com/kennethreitz/requests/) for Python
+- ArcGIS Online organizational account or ArcGIS for Server if data is to be published (optional)
 
 - Tool imports spreadsheet data to a point feature class in a file, enterprise, or workgroup geodatabase with a similar schema. Only values in fields that exist in both the spreadsheet and feature class will be copied. Field names are case-sensitive.
+
 - Spreadsheet and feature class must have fields with a unique identifier for each record. These fields must have the same field name.
+
 - To filter for duplicates, both the spreadsheet and the feature class must have fields with the date, and optionally time, of the incident or incident report. These fields must have the same field name and dates must be in a the format mm/dd/yyyy hh:mm. This format can be modified by changing the value of the timestamp variable at the top of the import\_publish_incidents.py script.
+
 - All date, time, and timestamp fields must be formatted in the spreadsheet to display, in order of requirement:
 	1. year
 	- month
@@ -37,24 +54,6 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 	- loc\_city_field: Your locator's input address field that looks for the city information
 	- loc\_state_field: Your locator's input address field that looks for the state or province information
 	- loc\_zip_field: Your locator's input address field that looks for the ZIP or postal code information
-
-## Instructions
-
-1. Download and unzip these tools.
-2. Download and unzip requests-master.zip.
-3. Open requests-master and copy the requests folder into the scripts folder of the incident import tools.
-4. In ArcMap or ArcCatalog, open the Configure Incident Imports tool. Complete the parameters and click OK to create a configuration file storing these parameter values.
-5. Run the Import Incidents tool, using the previously created configuration file as input. Be default this configuration file is saved to the scripts folder, but it may be moved to another location if necessary.
-6. Examine the output messaging and reports for comments on failures and data errors.
-7. Optionally, set up Windows Task Scheduler to run import\_publish_incidents.py automatically on a schedule with the configuration file as input.
-
-## Requirements
-
-
-- ArcGIS for Desktop
-- [Requests module](https://github.com/kennethreitz/requests/) for Python
-- ArcGIS Online organizational account or ArcGIS for Server if data is to be published (optional)
-
 
 ## Resources
 
@@ -95,7 +94,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-A copy of the license is available in the repository's [license.txt]( https://raw.github.com/Esri/quickstart-map-js/master/license.txt) file.
+A copy of the license is available in the repository's [license.txt](license.txt) file.
 
 
 [](Esri Tags: Local-Government Local Government Law Fire Incident Import)
