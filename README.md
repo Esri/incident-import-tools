@@ -29,7 +29,7 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 
 
 - ArcGIS for Desktop
-- [Requests module](https://github.com/kennethreitz/requests/) for Python
+- [Requests module v2.2.1](https://github.com/kennethreitz/requests/tree/v2.2.1) for Python 
 - ArcGIS Online organizational account or ArcGIS for Server if data is to be published (optional)
 
 - Tool imports spreadsheet data to a point feature class in a file, enterprise, or workgroup geodatabase with a similar schema. Only values in fields that exist in both the spreadsheet and feature class will be copied. Field names are case-sensitive.
