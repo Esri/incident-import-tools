@@ -35,7 +35,7 @@ from shutil import rmtree
 #   %h      zero-padded hours (01-12)
 #   %M      zero-padded minutes (00-59)
 #   %S      zero-padded seconds (00-59)
-timestamp = "%m/%d/%Y %H:%M:%S"
+timestamp = "%m/%d/%Y %H:%M"
 
 # Locator input fields
 #       World Geocode Service values are available here:
