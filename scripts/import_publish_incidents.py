@@ -24,6 +24,7 @@ import serviceutils
 import ConfigParser
 from tempfile import mkdtemp
 from shutil import rmtree
+import os
 
 # Data timestamp format for deleting duplicates
 # Day, month, hours, minutes, and seconds must always be zero-padded values
@@ -292,10 +293,7 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
                 are updated"""
     # Create temporary table of the new data
     tempTable = join(tempgdb, "tempTableLE")
-
-    tv = arcpy.MakeTableView_management(new_features, 'tempIncTableView')
-    arcpy.CopyRows_management(tv, tempTable)
-    del tv
+    arcpy.CopyRows_management(new_features, tempTable)
 
     # Dictionary of attributes from most recent report
     att_dict = {}
