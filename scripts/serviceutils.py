@@ -81,8 +81,7 @@ class AGOLHandler(object):
         """
         searchURL = self.http + "/search"
 
-        query_dict = {'f': 'json',
-                      'token': self.token,
+        query_dict = {'token': self.token,
                       'q': "title:\""+ self.serviceName + "\"AND owner:\"" + self.username + "\" AND type:\"" + findType + "\""}
 
         jsonResponse = sendAGOLReq(searchURL, query_dict)
@@ -217,7 +216,6 @@ def publish(agol):
 
     query_dict = {'itemID': agol.SDitemID,
                   'filetype': 'serviceDefinition',
-                  'f': 'json',
                   'token': agol.token}
 
     jsonResponse = sendAGOLReq(publishURL, query_dict)
@@ -234,8 +232,7 @@ def deleteExisting(agol):
 
     deleteURL = agol.http+'/content/users/{}/items/{}/delete'.format(agol.username, agol.itemID)
 
-    query_dict = {'f': 'json',
-                  'token': agol.token}
+    query_dict = {'token': agol.token}
 
     jsonResponse = sendAGOLReq(deleteURL, query_dict)
 
@@ -251,8 +248,7 @@ def enableSharing(agol, newItemID, everyone, orgs, groups):
     if groups is None:
         groups = ''
 
-    query_dict = {'f': 'json',
-                  'everyone': everyone,
+    query_dict = {'everyone': everyone,
                   'org': orgs,
                   'groups': groups,
                   'token': agol.token}
@@ -266,8 +262,8 @@ def sendAGOLReq(URL, query_dict):
     """
     Helper function which takes a URL and a dictionary and sends the request
     """
-    jsonResponse = urllib.urlopen(URL, urllib.urlencode(query_dict))
-    jsonOuput = json.loads(jsonResponse.read())
+    query_string = urllib.urlencode(query_dict)
+    jsonOuput = json.loads(urllib.urlopen(URL + "?f=json", query_string).read())
 
     wordTest = ["success", "results", "services", "notSharedWith"]
     if any(word in jsonOuput for word in wordTest):
