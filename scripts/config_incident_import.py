@@ -28,43 +28,27 @@ def write_config(params, config, section):
 
 
 def main(config_file,
-
-         spreadsheet,
-         incident_features,
+         spreadsheet_dir,
+         completed_spreadsheets,
          reports,
+         server_url,
+         user_name,
+         password,
+         incident_service,
          incident_id,
          delete_duplicates=False,
          report_date_field="",
          summary_field="",
          loc_type="",
-         pub_status="",
-
          address_field="",
          city_field="",
          state_field="",
          zip_field="",
          locator="",
-
          long_field="",
          lat_field="",
          coord_system="",
          ignore_zeros=False,
-         transform_method="",
-
-         mxd="",
-         service_name="",
-         server_path="",
-         folder_name="",
-         user_name="",
-         password="",
-
-         in_public=False,
-         in_organization=False,
-         in_groups=[],
-         tags="",
-         description="",
-         max_records="",
-
          *args):
     """
     Reads in a series of values from a
@@ -75,24 +59,25 @@ def main(config_file,
     config = ConfigParser.RawConfigParser()
     arcpy.AddMessage('Configuration file created')
 
-    if in_public == "true":
-        in_public = True
-
-    if in_organization == 'true':
-        in_organization = True
-
     # Add general parameters
     section = 'GENERAL'
-    p_dict = OrderedDict([('spreadsheet', spreadsheet),
-                          ('incident_features',incident_features),
+    p_dict = OrderedDict([('spreadsheet_directory', spreadsheet_dir),
+                          ('completed_spreadsheets', completed_spreadsheets),
+                          ('incident_service',incident_service),
                           ('reports',reports),
                           ('incident_id',incident_id),
                           ('report_date_field',report_date_field),
                           ('summary_field',summary_field),
                           ('delete_duplicates',delete_duplicates),
-                          ('loc_type',loc_type),
-                          ('pub_status',pub_status),
-                          ('transform_method',transform_method)])
+                          ('loc_type',loc_type)])
+
+    write_config(p_dict, config, section)
+
+    #Add general publication parameters
+    section = 'SERVICE'
+    p_dict = OrderedDict([('server_url', server_url),
+                          ('user_name',user_name),
+                          ('password',password)])
 
     write_config(p_dict, config, section)
 
@@ -112,33 +97,6 @@ def main(config_file,
                           ('state_field',state_field),
                           ('zip_field',zip_field),
                           ('locator',locator)])
-
-    write_config(p_dict, config, section)
-
-    #Add general publication parameters
-    section = 'PUBLISHING'
-    p_dict = OrderedDict([('mxd',mxd),
-                          ('service_name',service_name),
-                          ('user_name',user_name),
-                          ('password',password)])
-
-    write_config(p_dict, config, section)
-
-    # Add Server configuration parameters
-    section = 'SERVER'
-    p_dict = OrderedDict([('folder_name',folder_name),
-                          ('server_path',server_path)])
-
-    write_config(p_dict, config, section)
-
-    #Add ArcGIS Online publication parameters
-    section = 'AGOL'
-    p_dict = OrderedDict([('in_public',in_public),
-                          ('in_organization',in_organization),
-                          ('in_groups',in_groups),
-                          ('tags',tags),
-                          ('description',description),
-                          ('max_records',max_records)])
 
     write_config(p_dict, config, section)
 
