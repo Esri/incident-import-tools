@@ -1,8 +1,8 @@
 ##incident-import-tools
 
-Toolbox and scripts for importing spreadsheets to a gdb and optionally publishing out to ArcGIS Online (feature service) or ArcGIS for Server (dynamic map service).   
+Toolbox and scripts for importing spreadsheets to a gdb and optionally publishing out to ArcGIS Online (feature service) or ArcGIS for Server (dynamic map service).
 
-Geometry can be assigned to features using provided coordinate values in a known spatial reference system, or by geocoding an address associated with each incident.   
+Geometry can be assigned to features using provided coordinate values in a known spatial reference system, or by geocoding an address associated with each incident.
 
 These scripts can be scheduled using Windows Task Scheduler to automatically update the feature class and service.
 
@@ -29,7 +29,7 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 
 
 - ArcGIS for Desktop
-- [Requests module v2.2.1](https://github.com/kennethreitz/requests/tree/v2.2.1) for Python 
+- [Requests module v2.2.1](https://github.com/kennethreitz/requests/tree/v2.2.1) for Python
 - ArcGIS Online organizational account or ArcGIS for Server if data is to be published (optional)
 
 - Tool imports spreadsheet data to a point feature class in a file, enterprise, or workgroup geodatabase with a similar schema. Only values in fields that exist in both the spreadsheet and feature class will be copied. Field names are case-sensitive.
@@ -39,23 +39,23 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 - To filter for duplicates, both the spreadsheet and the feature class must have fields with the date, and optionally time, of the incident or incident report. These fields must have the same field name and dates must be in a the format mm/dd/yyyy hh:mm. This format can be modified by changing the value of the timestamp variable at the top of the import\_publish_incidents.py script.
 
 - All date, time, and timestamp fields must be formatted in the spreadsheet to display, in order of requirement:
-	1. year
-	- month
-	- day
-	- hour
-	- minute
+    1. year
+    - month
+    - day
+    - hour
+    - minute
 
-	For example, a field containing only the time 16:45 will cause the tool to fail because it is missing the year, month and day information associated with that time.
+    For example, a field containing only the time 16:45 will cause the tool to fail because it is missing the year, month and day information associated with that time.
 - These tools are set up to use the World Geocode service, which requires,  and consumes credits from, an ArcGIS Online organizational account.
-	
-	[Learn more about setting up a connection to the World Geocode Service](http://resources.arcgis.com/en/help/main/10.1/index.html#//00250000004v000000)
-	
-	Optionally, use your own locator or geocode service. This requires some additional configuration of the scripts. Open import\_publish_incidents.py in IDLE or a text editor and modify the values of the following parameters located near the top of the script:
-	- all\_locator_fields: in order, all the input address fields accepted by your locator
-	- loc\_address_field: Your locator's input address field that looks for the house number and street name information
-	- loc\_city_field: Your locator's input address field that looks for the city information
-	- loc\_state_field: Your locator's input address field that looks for the state or province information
-	- loc\_zip_field: Your locator's input address field that looks for the ZIP or postal code information
+
+    [Learn more about setting up a connection to the World Geocode Service](http://resources.arcgis.com/en/help/main/10.1/index.html#//00250000004v000000)
+
+    Optionally, use your own locator or geocode service. This requires some additional configuration of the scripts. Open import\_publish_incidents.py in IDLE or a text editor and modify the values of the following parameters located near the top of the script:
+    - all\_locator_fields: in order, all the input address fields accepted by your locator
+    - loc\_address_field: Your locator's input address field that looks for the house number and street name information
+    - loc\_city_field: Your locator's input address field that looks for the city information
+    - loc\_state_field: Your locator's input address field that looks for the state or province information
+    - loc\_zip_field: Your locator's input address field that looks for the ZIP or postal code information
 
 ## Resources
 
@@ -97,7 +97,3 @@ limitations under the License.
 
 
 A copy of the license is available in the repository's [license.txt](license.txt) file.
-
-
-[](Esri Tags: Local-Government Local Government Law Fire Incident Import)
-[](Esri Language: Python)​
