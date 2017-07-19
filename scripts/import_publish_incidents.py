@@ -9,7 +9,7 @@
   Author:      ArcGIS for Local Government
 
   Created:     09/01/2014
-  Updated:     28/04/2014
+  Updated:     19/7/2017 Changes to world geocode service
 ----------------------------------------------------------------------------"""
 
 from os.path import dirname, join, exists, splitext, isfile
