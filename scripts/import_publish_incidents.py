@@ -9,7 +9,7 @@
   Author:      ArcGIS for Local Government
 
   Created:     09/01/2014
-  Updated:     28/04/2014
+  Updated:     19/7/2017 Changes to world geocode service
 ----------------------------------------------------------------------------"""
 
 from os.path import dirname, join, exists, splitext, isfile
@@ -41,7 +41,7 @@ timestamp = "%m/%d/%Y %H:%M"
 # Locator input fields
 #       World Geocode Service values are available here:
 #       http://resources.arcgis.com/en/help/arcgis-rest-api/#/Multiple_input_field_geocoding/02r30000001p000000/
-all_locator_fields = ["Address", "Neighborhood", "City", "Subregion", "Region", "Postal", "PostalExt", "CountryCode"]
+all_locator_fields = ["Address", "Address2", "Address3", "Neighborhood", "City", "Subregion", "Region", "Postal", "PostalExt", "CountryCode"]
 
 loc_address_field = "Address" # Field in all_locator_fields for street address (required)
 loc_city_field    = "City"    # Field in all_locator_fields for City (optional)
@@ -53,7 +53,7 @@ status = "Status"
 addr_type = "Addr_type"
 
 # Accepted levels of geolocation
-addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress"]
+addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress", "StreetAddressExt"]
 match_value = ["M"]
 
 # Feature access options for AGOL hosted service
