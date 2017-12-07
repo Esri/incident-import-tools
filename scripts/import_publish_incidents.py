@@ -14,17 +14,19 @@
 
 from os.path import dirname, join, exists, splitext, isfile, basename
 from datetime import datetime as dt
-from time import mktime
+from time import mktime, time as t
 from calendar import timegm
+from arcgis.gis import GIS
+from arcgis.features import Feature, FeatureLayer
 import arcpy
 import csv
 import getpass
-import ConfigParser
+import configparser
 from os import rename, walk
-from arcrest.security import AGOLTokenSecurityHandler
-from arcresthelper import securityhandlerhelper
-from arcresthelper import common
-from arcrest.agol import FeatureLayer
+#from arcrest.security import AGOLTokenSecurityHandler
+#from arcresthelper import securityhandlerhelper
+#from arcresthelper import common
+#from arcrest.agol import FeatureLayer
 
 # Data timestamp format for deleting duplicates
 # Day, month, hours, minutes, and seconds must always be zero-padded values
@@ -110,6 +112,7 @@ w6 = "*** {} records were not successfully geocoded.\nThese records have been co
 w7 = "*** {} records were not geocoded to an acceptable level of accuracy: {}\nThese records have been copied to {}.\n\n"
 
 # Informative messages
+m0 = "{} Logged into portal as {}...\n"
 m1 = "{}  Creating features...\n"
 m3 = "{}  Geocoding incidents...\n"
 m4 = "{}  Appending incidents to {}...\n"
@@ -199,7 +202,6 @@ def compare_locations(fields, servicerow, tablerow, loc_fields):
 
         if loc_field in fields:
             loc_index = fields.index(loc_field)
-
             try:
                 if tablerow[loc_index].is_integer():
                         tablerow[loc_index] = int(tablerow[loc_index])
@@ -234,7 +236,7 @@ def cast_id(idVal, field_type):
 #End cast_id function
 
 
-def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field, loc_fields):
+def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields):
     """Compares records with matching ids and determines which is more recent.
         If the new record is older than the existing record, no updates
         If the new record has the same or a more recent date, the locations
@@ -243,7 +245,7 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
             If the location has changed the existing record is deleted
             If the locations are the same the existing record attributes
                 are updated"""
-
+    arcpy.AddMessage(1)
     update_count = 0
     del_count = 0
 
@@ -254,10 +256,10 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
     # Field indices for identifying most recent record
     id_index = fields.index(id_field)
     dt_index = fields.index(dt_field)
-
+    arcpy.AddMessage(2)
     # service field types
     service_field_types = {}
-    for field in cur_features.fields:
+    for field in cur_features.properties.fields:
         service_field_types[field['name']] = field['type']
 
     # Record and delete rows with null values that cannot be processed
@@ -291,10 +293,10 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
 
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
-
+    #arcpy.AddMessage(service_ids)
     # Use id values common to service and new data to build a where clause
-    common_ids = list(set(all_ids).intersection([str(service_id.asRow[0][0]) for service_id in service_ids]))
-
+    #arcpy.AddMessage([str(service_id.asRow()) for service_id in service_ids])
+    common_ids = list(set(all_ids).intersection([str(service_id.as_row[0][0]) for service_id in service_ids]))
     if common_ids:
         if not len(list(set(all_ids))) == 1:
             where_clause = """{0} IN {1}""".format(id_field, tuple(common_ids))
@@ -308,17 +310,18 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
 
             # Grab the attributes values associated with that id
             where_service_dup = """{} = {}""".format(id_field, idVal)
-
             with arcpy.da.UpdateCursor(tempTable, fields, where_service_dup) as csvdups:
                 for csvdup in csvdups:
 
                 # Test if new record is more recent (date_status = True)
                     try:
                         date2 = dt.utcfromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
-                        date1 = dt.strptime(csvdup[dt_index],timestamp)
+                        arcpy.AddMessage(date2)
+                        #date1 = dt.strptime(csvdup[dt_index],timestamp)
+                        date1 = csvdup[dt_index]
+                        arcpy.AddMessage(date1)
                         date1.replace(microsecond = 0)
                         date2.replace(microsecond = 0)
-
                     except TypeError:
                         raise Exception(e15.format(dt_field, new_features, timestamp))
 
@@ -336,13 +339,13 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
 
                             # Delete the row from the service
                             del_where = """{} = {}""".format(id_field, idVal)
-                            cur_features.deleteFeatures(where=del_where)
+                            cur_features.delete_features(where=del_where)
 
                         else:
                             # Same location, try to update the service attributes
                             try:
                                 field_info = []
-                                for i in xrange(0, len(fields)):
+                                for i in range(0, len(fields)):
                                     fvals = {}
                                     fvals['FieldName'] = fields[i]
 
@@ -351,7 +354,7 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
                                         fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
                                     elif 'Date' in service_field_types[fields[i]]:
                                         try:
-                                            fvals['ValueToSet'] = mktime(time.strptime(csvdup[i],timestamp))
+                                            fvals['ValueToSet'] = mktime(dt.strptime(csvdup[i],timestamp))
                                         except TypeError:
                                             fvals['ValueToSet'] = csvdup[i]
                                     else:
@@ -375,7 +378,7 @@ def remove_dups(tempgdb, new_features, cur_features, fields, id_field, dt_field,
                             #   further attention.
                             except RuntimeError:
                                 del_where = """{} = {}""".format(id_field, idVal)
-                                cur_features.deleteFeatures(where=del_where)
+                                cur_features.delete_features(where=del_where)
 
 ##                    break
 
@@ -398,7 +401,7 @@ def main(config_file, *args):
     fileNow = dt.strftime(dt.now(), prefix)
 
     if isfile(config_file):
-        cfg = ConfigParser.ConfigParser()
+        cfg = configparser.ConfigParser()
         cfg.read(config_file)
     else:
         raise Exception(e1.format("Configuration file", config_file, ""))
@@ -454,37 +457,41 @@ def main(config_file, *args):
                 proxy_port = None
                 proxy_url = None
 
-                securityinfo = {}
-                securityinfo['security_type'] = 'Portal'#LDAP, NTLM, OAuth, Portal, PKI
-                securityinfo['username'] = cfg.get('SERVICE', 'user_name')
-                securityinfo['password'] = cfg.get('SERVICE', 'password')
-                securityinfo['org_url'] = cfg.get('SERVICE', 'server_url')
-                securityinfo['proxy_url'] = proxy_url
-                securityinfo['proxy_port'] = proxy_port
-                securityinfo['referer_url'] = None
-                securityinfo['token_url'] = None
-                securityinfo['certificatefile'] = None
-                securityinfo['keyfile'] = None
-                securityinfo['client_id'] = None
-                securityinfo['secret_id'] = None
+                portalURL = cfg.get('SERVICE', 'server_url')
+                username = cfg.get('SERVICE', 'user_name')
+                password = cfg.get('SERVICE', 'password')
 
-                shh = securityhandlerhelper.securityhandlerhelper(securityinfo=securityinfo)
-                if shh.valid == False:
-                    raise Exception(shh.message)
+                timeNow = dt.strftime(dt.now(), time_format)
+                portal = GIS(portalURL, username, password)
+                messages(m0.format(timeNow, str(portal.properties.user.username)), log)
 
-                fl = FeatureLayer(
-                    url=inc_features,
-                    securityHandler=shh.securityhandler,
-                    proxy_port=proxy_port,
-                    proxy_url=proxy_url,
-                    initialize=True)
+                #securityinfo = {}
+                #securityinfo['security_type'] = 'Portal'#LDAP, NTLM, OAuth, Portal, PKI
+                #securityinfo['username'] = cfg.get('SERVICE', 'user_name')
+                #securityinfo['password'] = cfg.get('SERVICE', 'password')
+                #securityinfo['org_url'] = cfg.get('SERVICE', 'server_url')
+                #securityinfo['proxy_url'] = proxy_url
+                #securityinfo['proxy_port'] = proxy_port
+                #securityinfo['referer_url'] = None
+                #securityinfo['token_url'] = None
+                #securityinfo['certificatefile'] = None
+                #securityinfo['keyfile'] = None
+                #securityinfo['client_id'] = None
+                #securityinfo['secret_id'] = None
 
-                if not fl.geometryType == 'esriGeometryPoint':
+                ##shh = securityhandlerhelper.securityhandlerhelper(securityinfo=securityinfo)
+                ##if shh.valid == False:
+                    ##raise Exception(shh.message)
+
+                fl = FeatureLayer(url=inc_features,gis=portal)
+                    
+
+                if not fl.properties.geometryType == 'esriGeometryPoint':
                     raise Exception(e6.format(inc_features))
 
                 # Identify field names in both fc and csv
                 csvfieldnames = [f.name for f in arcpy.ListFields(incidents)]
-                incfieldnames = [f['name'] for f in fl.fields]
+                incfieldnames = [f['name'] for f in fl.properties.fields]
 
                 matchfieldnames = [fieldname for fieldname in csvfieldnames if fieldname in incfieldnames]
 
@@ -577,7 +584,7 @@ def main(config_file, *args):
                     listSumVals = [val for val in SumVals if val != None]
 
                     if not len(SumVals) == len(listSumVals):
-                        print m19.format(len(SumVals)-len(listSumVals))
+                        print(m19.format(len(SumVals)-len(listSumVals)))
                         log.write(m19.format(len(SumVals)-len(listSumVals)))
                     listSumVals.sort()
 
@@ -719,12 +726,12 @@ def main(config_file, *args):
                     errorfieldnames += [long_field, lat_field]
 
                     # Reproject the features
-                    sr_output = fl.extent['spatialReference']['wkid']
+                    sr_output = fl.properties.extent['spatialReference']['wkid']
                     proj_out = "{}_proj".format(tempFC)
                     arcpy.Project_management(tempFC, proj_out, sr_output)
 
                     # Append features to service
-                    fl.addFeatures(proj_out)
+                    fl.edit_features(proj_out)
 
             except arcpy.ExecuteError:
                 print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
