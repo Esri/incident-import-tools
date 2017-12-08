@@ -18,6 +18,7 @@ from time import mktime, time as t
 from calendar import timegm
 from arcgis.gis import GIS
 from arcgis.features import Feature, FeatureLayer
+import json
 import arcpy
 import csv
 import getpass
@@ -245,7 +246,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
             If the location has changed the existing record is deleted
             If the locations are the same the existing record attributes
                 are updated"""
-    arcpy.AddMessage(1)
     update_count = 0
     del_count = 0
 
@@ -256,7 +256,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
     # Field indices for identifying most recent record
     id_index = fields.index(id_field)
     dt_index = fields.index(dt_field)
-    arcpy.AddMessage(2)
     # service field types
     service_field_types = {}
     for field in cur_features.properties.fields:
@@ -293,17 +292,21 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
-    #arcpy.AddMessage(service_ids)
     # Use id values common to service and new data to build a where clause
-    #arcpy.AddMessage([str(service_id.asRow()) for service_id in service_ids])
     common_ids = list(set(all_ids).intersection([str(service_id.as_row[0][0]) for service_id in service_ids]))
+    ##arcpy.AddMessage(common_ids)
     if common_ids:
         if not len(list(set(all_ids))) == 1:
             where_clause = """{0} IN {1}""".format(id_field, tuple(common_ids))
         else:
             where_clause = """{0} = {1}""".format(id_field, tuple(common_ids[0]))
 
-        for servicerow in cur_features.query(where=where_clause, out_fields=",".join(fields), returnGeometry=False):
+        curFeaturesFS = cur_features.query(where=where_clause, out_fields=",".join(fields), returnGeometry=False)
+        #arcpy.AddMessage(curFeaturesFS.features)
+
+        editFeatures = []
+
+        for servicerow in curFeaturesFS.features:
 
             # Get the id value for the row
             idVal = cast_id(servicerow.get_value(id_field), service_field_types[id_field])
@@ -315,11 +318,17 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
                 # Test if new record is more recent (date_status = True)
                     try:
-                        date2 = dt.utcfromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
-                        arcpy.AddMessage(date2)
-                        #date1 = dt.strptime(csvdup[dt_index],timestamp)
-                        date1 = csvdup[dt_index]
-                        arcpy.AddMessage(date1)
+                        #Bring in time stamp from service in system time
+                        date2 = dt.fromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
+
+                        arcpy.AddMessage(int(str(servicerow.get_value(dt_field))[:10]))
+
+                        #Check to see if spreadsheet date is already a datetime, if not convert to datetime
+                        if isinstance(csvdup[dt_index], dt):
+                            date1 = csvdup[dt_index]
+                        else:
+                            date1 = dt.strptime(csvdup[dt_index],timestamp)
+
                         date1.replace(microsecond = 0)
                         date2.replace(microsecond = 0)
                     except TypeError:
@@ -329,11 +338,11 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                     if date1 < date2:
                         csvdups.deleteRow()
                         del_count += 1
+                        arcpy.AddMessage("Source Date: " + str(date1) + " Target Date: " + str(date2))
 
                     # Otherwise, compare location values
                     else:
                         loc_status = compare_locations(fields, servicerow, csvdup, loc_fields)
-
                         # If the location has changed
                         if loc_status:
 
@@ -354,9 +363,11 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                         fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
                                     elif 'Date' in service_field_types[fields[i]]:
                                         try:
-                                            fvals['ValueToSet'] = mktime(dt.strptime(csvdup[i],timestamp))
+                                            #DateString -> Datetime -> UNIX timestamp integer
+                                            fvals['ValueToSet'] = int(str(dt.strptime(csvdup[i],timestamp).timestamp()*1000)[:13])
                                         except TypeError:
-                                            fvals['ValueToSet'] = csvdup[i]
+                                            #Create a unix timestamp integer in UTC time to send to service
+                                            fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
                                     else:
                                         fvals['ValueToSet'] = csvdup[i]
 
@@ -365,12 +376,12 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
                                 for fld in field_info:
                                     servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
+
+                                editFeatures.append(servicerow)
                                 update_count += 1
 
                                 # Remove the record from the table
                                 csvdups.deleteRow()
-
-
                             # If there is a field type mismatch between the service
                             #   and the table, delete the row in the
                             #   service. The table record will be
@@ -379,6 +390,8 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                             except RuntimeError:
                                 del_where = """{} = {}""".format(id_field, idVal)
                                 cur_features.delete_features(where=del_where)
+
+        cur_features.edit_features(updates=editFeatures)
 
 ##                    break
 
@@ -609,7 +622,6 @@ def main(config_file, *args):
 
                 # Remove duplicate incidents
                 if delete_duplicates:
-
                     timeNow = dt.strftime(dt.now(), time_format)
                     messages(m13.format(timeNow), log)
 
@@ -730,8 +742,16 @@ def main(config_file, *args):
                     proj_out = "{}_proj".format(tempFC)
                     arcpy.Project_management(tempFC, proj_out, sr_output)
 
+                    #Convert to Feature Set
+                    fs = arcpy.FeatureSet()
+                    fs.load(proj_out)
+                    addFeatures = json.loads(fs.JSON)["features"]
+                    for features[] in addFeatures:
+                        for fields in features.properties.fields
+
                     # Append features to service
-                    fl.edit_features(proj_out)
+                    results = fl.edit_features(json.loads(fs.JSON)["features"])
+
 
             except arcpy.ExecuteError:
                 print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
