@@ -292,9 +292,11 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
+
+    
     # Use id values common to service and new data to build a where clause
-    common_ids = list(set(all_ids).intersection([str(service_id.as_row[0][0]) for service_id in service_ids]))
-    ##arcpy.AddMessage(common_ids)
+    common_ids = list(set(all_ids).intersection([str(service_id.get_value(id_field)) for service_id in service_ids]))
+
     if common_ids:
         if not len(list(set(all_ids))) == 1:
             where_clause = """{0} IN {1}""".format(id_field, tuple(common_ids))
@@ -302,7 +304,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
             where_clause = """{0} = {1}""".format(id_field, tuple(common_ids[0]))
 
         curFeaturesFS = cur_features.query(where=where_clause, out_fields=",".join(fields), returnGeometry=False)
-        #arcpy.AddMessage(curFeaturesFS.features)
 
         editFeatures = []
 
@@ -315,13 +316,10 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
             where_service_dup = """{} = {}""".format(id_field, idVal)
             with arcpy.da.UpdateCursor(tempTable, fields, where_service_dup) as csvdups:
                 for csvdup in csvdups:
-
                 # Test if new record is more recent (date_status = True)
                     try:
                         #Bring in time stamp from service in system time
                         date2 = dt.fromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
-
-                        arcpy.AddMessage(int(str(servicerow.get_value(dt_field))[:10]))
 
                         #Check to see if spreadsheet date is already a datetime, if not convert to datetime
                         if isinstance(csvdup[dt_index], dt):
@@ -338,7 +336,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                     if date1 < date2:
                         csvdups.deleteRow()
                         del_count += 1
-                        arcpy.AddMessage("Source Date: " + str(date1) + " Target Date: " + str(date2))
 
                     # Otherwise, compare location values
                     else:
@@ -373,15 +370,23 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
                                     # Make sure dates get processed as date values
                                     field_info.append(fvals)
-
+                                
+                                #Check to see if any attributes are different between target service and source table
+                                updateNeeded = False
                                 for fld in field_info:
-                                    servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
-
-                                editFeatures.append(servicerow)
-                                update_count += 1
+                                    if servicerow.get_value(fld["FieldName"]) != fld['ValueToSet']:
+                                        updateNeeded = True
+                                
+                                #At least one attribute change detected so send attributes to service
+                                if updateNeeded:
+                                    for fld in field_info:
+                                        servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
+                                    editFeatures.append(servicerow)
+                                    update_count += 1
 
                                 # Remove the record from the table
                                 csvdups.deleteRow()
+
                             # If there is a field type mismatch between the service
                             #   and the table, delete the row in the
                             #   service. The table record will be
@@ -746,8 +751,6 @@ def main(config_file, *args):
                     fs = arcpy.FeatureSet()
                     fs.load(proj_out)
                     addFeatures = json.loads(fs.JSON)["features"]
-                    for features[] in addFeatures:
-                        for fields in features.properties.fields
 
                     # Append features to service
                     results = fl.edit_features(json.loads(fs.JSON)["features"])
