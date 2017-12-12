@@ -47,7 +47,7 @@ file_types = ['.csv', '.txt','.xls','.xlsx']
 # Locator input fields
 #       World Geocode Service values are available here:
 #       http://resources.arcgis.com/en/help/arcgis-rest-api/#/Multiple_input_field_geocoding/02r30000001p000000/
-all_locator_fields = ["Address", "Neighborhood", "City", "Subregion", "Region", "Postal", "PostalExt", "CountryCode"]
+all_locator_fields = ["Address", "Address2", "Address3", "Neighborhood", "City", "Subregion", "Region", "Postal", "PostalExt", "CountryCode"]
 
 loc_address_field = "Address" # Field in all_locator_fields for street address (required)
 loc_city_field    = "City"    # Field in all_locator_fields for City (optional)
@@ -60,7 +60,7 @@ addr_type = "Addr_type"
 
 # Accepted levels of geolocation
 addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress"]
-match_value = ["M"]
+match_value = ["M", "T"]
 
 # Feature access options for AGOL hosted service
 feature_access = "Query, Create, Update, Delete, Uploads, Editing"
@@ -672,6 +672,7 @@ def main(config_file, *args):
                                                          addresses,
                                                          tempFC,
                                                          "STATIC")
+                        
 
                         # Initiate geocoding report counts
                         countMatch = 0
@@ -690,7 +691,7 @@ def main(config_file, *args):
 
                         # Write incidents that were not well geocoded to file and
                         #       delete from temp directory
-                        with open (rptUnmatch, "wb") as umatchFile:
+                        with open (rptUnmatch, "w") as umatchFile:
                             unmatchwriter = csv.writer(umatchFile)
                             unmatchwriter.writerow(fieldnames)
 
@@ -698,7 +699,7 @@ def main(config_file, *args):
                             countUnmatch = sort_records(tempFC, unmatchwriter,
                                                         statusIndex, match_value,
                                                         False, True)
-
+                            
                             if not countUnmatch == 0:
                                 messages(w6.format(countUnmatch, rptUnmatch), log, 1)
 
@@ -742,6 +743,13 @@ def main(config_file, *args):
                     errorfieldnames.insert(0, errorfield)
                     errorfieldnames += [long_field, lat_field]
 
+                    #Remove USER_ from Field Names if Geocoded
+                    if loc_type == "ADDRESSES":
+                        for name in fieldnames:
+                            if name.replace("USER_", "") in incfieldnames:
+                                arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
+                            
+
                     # Reproject the features
                     sr_output = fl.properties.extent['spatialReference']['wkid']
                     proj_out = "{}_proj".format(tempFC)
@@ -759,6 +767,7 @@ def main(config_file, *args):
                         tempFeature = Feature(feature['geometry'], feature['attributes'])
                         fset.append(tempFeature)
 
+
                     #Convert all date values to UTC for records to add
                     for feature in fset:
                         for dateField in dateFields:
@@ -769,7 +778,7 @@ def main(config_file, *args):
                             dateValue = int(str(dateValue.timestamp()*1000)[:13])
                             feature.set_value(dateField, dateValue)
 
-                    # Append features to service
+                    #Append features to service
                     fl.edit_features(fset)
 
 
