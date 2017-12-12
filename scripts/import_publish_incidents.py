@@ -747,13 +747,30 @@ def main(config_file, *args):
                     proj_out = "{}_proj".format(tempFC)
                     arcpy.Project_management(tempFC, proj_out, sr_output)
 
+                    dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type']]
+
                     #Convert to Feature Set
                     fs = arcpy.FeatureSet()
                     fs.load(proj_out)
-                    addFeatures = json.loads(fs.JSON)["features"]
+                    
+                    #Create ArcGIS Python API Features List
+                    fset = []
+                    for feature in json.loads(fs.JSON)["features"]:
+                        tempFeature = Feature(feature['geometry'], feature['attributes'])
+                        fset.append(tempFeature)
+
+                    #Convert all date values to UTC for records to add
+                    for feature in fset:
+                        for dateField in dateFields:
+                            if isinstance(feature.get_value(dateField), int):
+                                dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                            else:
+                                dateValue = dt.strptime(feature.get_value(dateField), timestamp)
+                            dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                            feature.set_value(dateField, dateValue)
 
                     # Append features to service
-                    results = fl.edit_features(json.loads(fs.JSON)["features"])
+                    fl.edit_features(fset)
 
 
             except arcpy.ExecuteError:
