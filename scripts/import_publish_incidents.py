@@ -24,25 +24,6 @@ import csv
 import getpass
 import configparser
 from os import rename, walk
-#from arcrest.security import AGOLTokenSecurityHandler
-#from arcresthelper import securityhandlerhelper
-#from arcresthelper import common
-#from arcrest.agol import FeatureLayer
-
-# Data timestamp format for deleting duplicates
-# Day, month, hours, minutes, and seconds must always be zero-padded values
-#   %m      zero-padded month (00-12)
-#   %d      zero-padded day (00-31)
-#   %Y      year with century (e.g 2014)
-#   %y      two digit year (e.g 14)
-#   %H      zero-padded hours (00-24)
-#   %h      zero-padded hours (01-12)
-#   %M      zero-padded minutes (00-59)
-#   %S      zero-padded seconds (00-59)
-timestamp = "%m/%d/%Y %H:%M"
-
-# Accepted file extensions
-file_types = ['.csv', '.txt','.xls','.xlsx'] 
 
 # Locator input fields
 #       World Geocode Service values are available here:
@@ -117,7 +98,7 @@ m0 = "{} Logged into portal as {}...\n"
 m1 = "{}  Creating features...\n"
 m2 = "{} Mapping fields to field mapping object...\n"
 m3 = "{}  Geocoding incidents...\n"
-m4 = "{}  Appending incidents to {}...\n"
+m4 = "{}  Appending {} updated incident(s) to {}...\n"
 ##m5 = "{}  Publishing incidents...\n"
 m6 = "{} Copying source table to new field mapped table...\n"
 m8 = "{}  Completed {}\n"
@@ -256,7 +237,7 @@ def processFieldMap(fieldmapstring):
         fmsObj.update(fmObj)
     return fmsObj
 
-def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields):
+def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields, timestamp):
     """Compares records with matching ids and determines which is more recent.
         If the new record is older than the existing record, no updates
         If the new record has the same or a more recent date, the locations
@@ -340,7 +321,10 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                 # Test if new record is more recent (date_status = True)
                     try:
                         #Bring in time stamp from service in system time
-                        date2 = dt.fromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
+                        if 'Date' in service_field_types[dt_field]: 
+                            date2 = dt.fromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
+                        else:
+                            date2 = dt.strptime(servicerow.get_value(dt_field),timestamp)
 
                         #Check to see if spreadsheet date is already a datetime, if not convert to datetime
                         if isinstance(csvdup[dt_index], dt):
@@ -454,6 +438,7 @@ def main(config_file, *args):
     delete_duplicates = cfg.get('GENERAL', 'delete_duplicates')
     fieldmap_option = cfg.get('GENERAL', 'fieldmap_option')
     fieldmap = cfg.get('GENERAL', 'fieldmap')
+    timestamp = cfg.get('GENERAL', 'timestamp_format')
 
     loc_type = "COORDINATES" if cfg.has_section('COORDINATES') else "ADDRESSES"
 
@@ -617,7 +602,7 @@ def main(config_file, *args):
 
             total_records = len(field_vals(incidents,id_field))
 
-            messages(m17.format(total_records, incidents), log)
+            messages(m17.format(total_records, cfg.get('GENERAL','source_table')), log)
 
             if not summary_field == "":
                 SumVals = field_vals(incidents, summary_field)
@@ -658,7 +643,8 @@ def main(config_file, *args):
                                                                                 matchfieldnames,
                                                                                 id_field,
                                                                                 report_date_field,
-                                                                                loc_fields)
+                                                                                loc_fields,
+                                                                                timestamp)
 
                 if not req_nulls == "":
                     req_nulls = "{}\n".format(req_nulls)
@@ -752,7 +738,7 @@ def main(config_file, *args):
                     arcpy.Delete_management(tempFL)
 
                 timeNow = dt.strftime(dt.now(), time_format)
-                messages(m4.format(timeNow, inc_features), log)
+                messages(m4.format(timeNow, records_to_add ,inc_features), log)
 
                 # Fields that will be copied from geocode results to final fc
                 copyfieldnames = []

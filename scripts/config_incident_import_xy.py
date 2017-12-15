@@ -61,6 +61,7 @@ def main(config_file,
          ignore_zeros=False,
          fieldmap_option="",
          fieldmap="",
+         timestamp_format="%%m/%%d/%%Y %%H:%%M",
          *args):
     """
     Reads in a series of values from a
@@ -103,6 +104,7 @@ def main(config_file,
             sys.exit()
 
 
+    timestamp_format = timestamp_format.replace("%","%%")
     # Add general parameters
     section = 'GENERAL'
     p_dict = OrderedDict([('source_table', source_table),
@@ -113,7 +115,8 @@ def main(config_file,
                           ('summary_field',summary_field),
                           ('delete_duplicates',delete_duplicates),
                           ('fieldmap_option', fieldmap_option),
-                          ('fieldmap', fieldmap)])
+                          ('fieldmap', fieldmap),
+                          ('timestamp_format', timestamp_format)])
 
     write_config(p_dict, config, section)
 
