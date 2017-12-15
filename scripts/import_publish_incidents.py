@@ -42,7 +42,7 @@ from os import rename, walk
 timestamp = "%m/%d/%Y %H:%M"
 
 # Accepted file extensions
-file_types = ['.csv', '.txt','.xls','.xlsx']
+file_types = ['.csv', '.txt','.xls','.xlsx'] 
 
 # Locator input fields
 #       World Geocode Service values are available here:
@@ -115,9 +115,11 @@ w7 = "*** {} records were not geocoded to an acceptable level of accuracy: {}\nT
 # Informative messages
 m0 = "{} Logged into portal as {}...\n"
 m1 = "{}  Creating features...\n"
+m2 = "{} Mapping fields to field mapping object...\n"
 m3 = "{}  Geocoding incidents...\n"
 m4 = "{}  Appending incidents to {}...\n"
 ##m5 = "{}  Publishing incidents...\n"
+m6 = "{} Copying source table to new field mapped table...\n"
 m8 = "{}  Completed {}\n"
 m13 = "{}  Updating older reports and filtering out duplicate records...\n"
 m14 = "  -- {} features updated in {}.\n\n"
@@ -236,6 +238,23 @@ def cast_id(idVal, field_type):
 
 #End cast_id function
 
+def processFieldMap(fieldmapstring):
+    fmsObj = {}
+    fieldmapstring = fieldmapstring.replace(")' '","|").replace(" (","*").replace(")","").replace("'","")
+    tempfieldmaplist = fieldmapstring.split(";")
+    for fieldpair in tempfieldmaplist:
+        fieldpair = fieldpair.split("|")
+        sourceField = fieldpair[0].split("*")[0]
+        sourcefieldType = fieldpair[0].split("*")[1]
+        targetField = fieldpair[1].split("*")[0]
+        targetfieldType = fieldpair[1].split("*")[1]
+        fmObj = {}
+        fmObj[sourceField] = {}
+        fmObj[sourceField]["type"] = sourcefieldType
+        fmObj[sourceField]["target"] = targetField
+        fmObj[sourceField]["targetType"] = targetfieldType
+        fmsObj.update(fmObj)
+    return fmsObj
 
 def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields):
     """Compares records with matching ids and determines which is more recent.
@@ -274,7 +293,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
     # Delete all but the most recent report if the table contains duplicates
     all_ids = [str(csvrow[id_index]) for csvrow in arcpy.da.SearchCursor(tempTable, fields)]
     dup_ids = [id for id in list(set(all_ids)) if all_ids.count(id) > 1]
-
+    
     if dup_ids:
         for dup_id in dup_ids:
             where_dup = """{0} = {1}""".format(id_field, dup_id)
@@ -296,7 +315,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
     
     # Use id values common to service and new data to build a where clause
     common_ids = list(set(all_ids).intersection([str(service_id.get_value(id_field)) for service_id in service_ids]))
-
     if common_ids:
         if not len(list(set(all_ids))) == 1:
             where_clause = """{0} IN {1}""".format(id_field, tuple(common_ids))
@@ -313,7 +331,10 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
             idVal = cast_id(servicerow.get_value(id_field), service_field_types[id_field])
 
             # Grab the attributes values associated with that id
-            where_service_dup = """{} = {}""".format(id_field, idVal)
+            if isinstance(idVal, int):
+                where_service_dup = """{} = {}""".format(id_field, idVal)
+            else:
+                where_service_dup = """{} = '{}'""".format(id_field, idVal)
             with arcpy.da.UpdateCursor(tempTable, fields, where_service_dup) as csvdups:
                 for csvdup in csvdups:
                 # Test if new record is more recent (date_status = True)
@@ -368,7 +389,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                     else:
                                         fvals['ValueToSet'] = csvdup[i]
 
-                                    # Make sure dates get processed as date values
                                     field_info.append(fvals)
                                 
                                 #Check to see if any attributes are different between target service and source table
@@ -377,7 +397,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                     if servicerow.get_value(fld["FieldName"]) != fld['ValueToSet']:
                                         updateNeeded = True
                                 
-                                #At least one attribute change detected so send attributes to service
+                                #At least one attribute change detected so send new attributes to service
                                 if updateNeeded:
                                     for fld in field_info:
                                         servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
@@ -425,15 +445,17 @@ def main(config_file, *args):
         raise Exception(e1.format("Configuration file", config_file, ""))
 
     # Get general configuration values
-    spreadsheet_dir = cfg.get('GENERAL', 'spreadsheet_directory')
-    output_dir = cfg.get('GENERAL', 'completed_spreadsheets')
-    inc_features = cfg.get('GENERAL', 'incident_service')
+    incidents = cfg.get('GENERAL', 'source_table')
+    inc_features = cfg.get('GENERAL', 'target_features')
     id_field = cfg.get('GENERAL', 'incident_id')
     report_date_field = cfg.get('GENERAL', 'report_date_field')
     reports = cfg.get('GENERAL', 'reports')
-    loc_type = cfg.get('GENERAL', 'loc_type')
     summary_field = cfg.get('GENERAL', 'summary_field')
     delete_duplicates = cfg.get('GENERAL', 'delete_duplicates')
+    fieldmap_option = cfg.get('GENERAL', 'fieldmap_option')
+    fieldmap = cfg.get('GENERAL', 'fieldmap')
+
+    loc_type = "COORDINATES" if cfg.has_section('COORDINATES') else "ADDRESSES"
 
     if delete_duplicates in ('true', 'True', True):
         delete_duplicates = True
@@ -443,385 +465,380 @@ def main(config_file, *args):
     if delete_duplicates in ('false', 'False'):
         delete_duplicates = False
 
-    # Get list of spreadhseets in input dir
-    spreadsheets = [join(spreadsheet_dir,f) for f in next(walk(spreadsheet_dir))[2] if splitext(f)[1] in file_types]
 
-    for spreadsheet in spreadsheets:
-        incidents = spreadsheet
-        incident_filename = basename(incidents)
-        log_name = splitext(incident_filename)[0]
+    incident_filename = basename(incidents)
+    log_name = splitext(incident_filename)[0]
 
-        # Log file
-        if exists(reports):
-            rptLog = join(reports, "{0}_{1}.log".format(fileNow, log_name))
+    # Log file
+    if exists(reports):
+        rptLog = join(reports, "{0}_{1}.log".format(fileNow, log_name))
 
-        else:
-            raise Exception(e1.format("Report location", reports, w5))
+    else:
+        raise Exception(e1.format("Report location", reports, w5))
 
-        # Scratch workspace
-        tempgdb = arcpy.env.scratchGDB
+    # Scratch workspace
+    tempgdb = arcpy.env.scratchGDB
 
-        with open(rptLog, "w") as log:
-            try:
-                # Log file header
-                log.write(l1.format(fileNow))
-                log.write(l2.format(getpass.getuser()))
-                log.write(l3.format(incidents))
-                log.write(l4.format(inc_features))
-                if loc_type == "ADDRESSES":
-                    log.write(l5.format(cfg.get('ADDRESSES', 'locator')))
+    with open(rptLog, "w") as log:
+        try:
+            # Log file header
+            log.write(l1.format(fileNow))
+            log.write(l2.format(getpass.getuser()))
+            log.write(l3.format(incidents))
+            log.write(l4.format(inc_features))
+            if loc_type == "ADDRESSES":
+                log.write(l5.format(cfg.get('ADDRESSES', 'locator')))
 
-                # connect to incidents service
-                proxy_port = None
-                proxy_url = None
+            # connect to incidents service
+            proxy_port = None
+            proxy_url = None
 
-                portalURL = cfg.get('SERVICE', 'server_url')
-                username = cfg.get('SERVICE', 'user_name')
-                password = cfg.get('SERVICE', 'password')
+            portalURL = cfg.get('SERVICE', 'portal_url')
+            username = cfg.get('SERVICE', 'username')
+            password = cfg.get('SERVICE', 'password')
 
+            timeNow = dt.strftime(dt.now(), time_format)
+            portal = GIS(portalURL, username, password)
+            messages(m0.format(timeNow, str(portal.properties.user.username)), log)
+
+            fl = FeatureLayer(url=inc_features,gis=portal)
+                
+
+            if not fl.properties.geometryType == 'esriGeometryPoint':
+                raise Exception(e6.format(inc_features))
+
+            timeNow = dt.strftime(dt.now(), time_format)
+            
+            # Create Field Mapping Object and Map incidents to new table with new schema    
+            messages(m2.format(timeNow), log)
+            if fieldmap_option == "Use Field Mapping":
+                fieldmap = processFieldMap(fieldmap)
+                afm = arcpy.FieldMappings()
+                for key, value in fieldmap.items():
+                    tempFieldMap = arcpy.FieldMap()
+                    tempFieldMap.mergeRule = "First"
+                    tempFieldMap.outputField = arcpy.ListFields(inc_features, value['target'])[0]
+                    tempFieldMap.addInputField(incidents, key)
+                    afm.addFieldMap(tempFieldMap)  
                 timeNow = dt.strftime(dt.now(), time_format)
-                portal = GIS(portalURL, username, password)
-                messages(m0.format(timeNow, str(portal.properties.user.username)), log)
+                messages(m6.format(timeNow), log)
+                incidents = arcpy.TableToTable_conversion(incidents, tempgdb, "schemaTable",field_mapping=afm)
 
-                #securityinfo = {}
-                #securityinfo['security_type'] = 'Portal'#LDAP, NTLM, OAuth, Portal, PKI
-                #securityinfo['username'] = cfg.get('SERVICE', 'user_name')
-                #securityinfo['password'] = cfg.get('SERVICE', 'password')
-                #securityinfo['org_url'] = cfg.get('SERVICE', 'server_url')
-                #securityinfo['proxy_url'] = proxy_url
-                #securityinfo['proxy_port'] = proxy_port
-                #securityinfo['referer_url'] = None
-                #securityinfo['token_url'] = None
-                #securityinfo['certificatefile'] = None
-                #securityinfo['keyfile'] = None
-                #securityinfo['client_id'] = None
-                #securityinfo['secret_id'] = None
+            # Identify field names in both fc and csv
+            csvfieldnames = [f.name for f in arcpy.ListFields(incidents)]
+            incfieldnames = [f['name'] for f in fl.properties.fields]
 
-                ##shh = securityhandlerhelper.securityhandlerhelper(securityinfo=securityinfo)
-                ##if shh.valid == False:
-                    ##raise Exception(shh.message)
+            matchfieldnames = [fieldname for fieldname in csvfieldnames if fieldname in incfieldnames]
+            
+            #Dont compare objectid values because they will likely be different and will cause updates
+            # to be sent to service when its not necessary
+            if 'OBJECTID' in matchfieldnames:
+                matchfieldnames.remove('OBJECTID') 
 
-                fl = FeatureLayer(url=inc_features,gis=portal)
-                    
+            # If data is to be geocoded
+            if loc_type == "ADDRESSES":
 
-                if not fl.properties.geometryType == 'esriGeometryPoint':
-                    raise Exception(e6.format(inc_features))
+                # Get geocoding parameters
+                address_field = cfg.get('ADDRESSES', 'address_field')
+                city_field = cfg.get('ADDRESSES', 'city_field')
+                state_field = cfg.get('ADDRESSES', 'state_field')
+                zip_field = cfg.get('ADDRESSES', 'zip_field')
+                locator = cfg.get('ADDRESSES', 'locator')
 
-                # Identify field names in both fc and csv
-                csvfieldnames = [f.name for f in arcpy.ListFields(incidents)]
-                incfieldnames = [f['name'] for f in fl.properties.fields]
+                # Geocoding field names
+                reqFields = [address_field, id_field]#, report_date_field]
+                opFields = [city_field, state_field, zip_field, summary_field, report_date_field]
 
-                matchfieldnames = [fieldname for fieldname in csvfieldnames if fieldname in incfieldnames]
+                if locator == "":
+                    raise Exception(e13)
 
-                # If data is to be geocoded
-                if loc_type == "ADDRESSES":
+                # Test geolocator fields
+                loc_address_fields = [loc_address_field, loc_city_field, loc_zip_field, loc_state_field]
+                for a in loc_address_fields:
+                    if not a == "":
+                        if not a in all_locator_fields:
+                            raise Exception(e14)
 
-                    # Get geocoding parameters
-                    address_field = cfg.get('ADDRESSES', 'address_field')
-                    city_field = cfg.get('ADDRESSES', 'city_field')
-                    state_field = cfg.get('ADDRESSES', 'state_field')
-                    zip_field = cfg.get('ADDRESSES', 'zip_field')
-                    locator = cfg.get('ADDRESSES', 'locator')
+            # If data has coordinate values
+            else:
 
-                    # Geocoding field names
-                    reqFields = [address_field, id_field]#, report_date_field]
-                    opFields = [city_field, state_field, zip_field, summary_field, report_date_field]
+                # Get coordinate parameters
+                lg_field = cfg.get('COORDINATES', 'Xfield')
+                lt_field = cfg.get('COORDINATES', 'Yfield')
+                coord_system = cfg.get('COORDINATES', 'coord_system')
+                remove_zeros = cfg.get('COORDINATES', 'ignore_zeros')
+                if remove_zeros in ('true', 'True'):
+                    remove_zeros = True
+                if remove_zeros in ('false', 'False'):
+                    remove_zeros = False
 
-                    if locator == "":
-                        raise Exception(e13)
+                # Coordinate field names
+                reqFields = [id_field, lg_field, lt_field]#, report_date_field]
+                opFields = [summary_field, report_date_field]
 
-                    # Test geolocator fields
-                    loc_address_fields = [loc_address_field, loc_city_field, loc_zip_field, loc_state_field]
-                    for a in loc_address_fields:
-                        if not a == "":
-                            if not a in all_locator_fields:
-                                raise Exception(e14)
+            # Validate required field names
+            field_test(incidents, reqFields, csvfieldnames, True)
+            field_test(inc_features, reqFields, incfieldnames, True)
 
-                # If data has coordinate values
-                else:
+            # Validate optional field names
+            field_test(incidents, opFields, csvfieldnames)
+            field_test(inc_features, opFields, incfieldnames)
 
-                    # Get coordinate parameters
-                    lg_field = cfg.get('COORDINATES', 'long_field')
-                    lt_field = cfg.get('COORDINATES', 'lat_field')
-                    coord_system = cfg.get('COORDINATES', 'coord_system')
-                    remove_zeros = cfg.get('COORDINATES', 'ignore_zeros')
-                    if remove_zeros in ('true', 'True'):
-                        remove_zeros = True
-                    if remove_zeros in ('false', 'False'):
-                        remove_zeros = False
+            # Get address fields for geocoding
+            if loc_type == "ADDRESSES":
 
-                    # Coordinate field names
-                    reqFields = [id_field, lg_field, lt_field]#, report_date_field]
-                    opFields = [summary_field, report_date_field]
+                addresses = ""
+                loc_fields = []
+                adr_string = "{0} {1} VISIBLE NONE;"
 
-                # Validate required field names
-                field_test(incidents, reqFields, csvfieldnames, True)
-                field_test(inc_features, reqFields, incfieldnames, True)
+                for loc_field in all_locator_fields:
+                    if loc_field == loc_address_field:
+                        addresses += adr_string.format(loc_field, address_field)
+                        loc_fields.append(address_field)
 
-                # Validate optional field names
-                field_test(incidents, opFields, csvfieldnames)
-                field_test(inc_features, opFields, incfieldnames)
+                    elif loc_field == loc_city_field and city_field != "":
+                        addresses += adr_string.format(loc_field, city_field)
+                        loc_fields.append(city_field)
 
-                # Get address fields for geocoding
-                if loc_type == "ADDRESSES":
+                    elif loc_field == loc_state_field and state_field != "":
+                        addresses += adr_string.format(loc_field, state_field)
+                        loc_fields.append(state_field)
 
-                    addresses = ""
-                    loc_fields = []
-                    adr_string = "{0} {1} VISIBLE NONE;"
-
-                    for loc_field in all_locator_fields:
-                        if loc_field == loc_address_field:
-                            addresses += adr_string.format(loc_field, address_field)
-                            loc_fields.append(address_field)
-
-                        elif loc_field == loc_city_field and city_field != "":
-                            addresses += adr_string.format(loc_field, city_field)
-                            loc_fields.append(city_field)
-
-                        elif loc_field == loc_state_field and state_field != "":
-                            addresses += adr_string.format(loc_field, state_field)
-                            loc_fields.append(state_field)
-
-                        elif loc_field == loc_zip_field and zip_field != "":
-                            addresses += adr_string.format(loc_field, zip_field)
-                            loc_fields.append(zip_field)
-
-                        else:
-                            addresses += adr_string.format(loc_field, "<None>")
-
-                # Get coordinate fields
-                else:
-                    loc_fields = [lg_field, lt_field]
-
-                total_records = len(field_vals(incidents,id_field))
-
-                messages(m17.format(total_records, incidents), log)
-
-                if not summary_field == "":
-                    SumVals = field_vals(incidents, summary_field)
-                    listSumVals = [val for val in SumVals if val != None]
-
-                    if not len(SumVals) == len(listSumVals):
-                        print(m19.format(len(SumVals)-len(listSumVals)))
-                        log.write(m19.format(len(SumVals)-len(listSumVals)))
-                    listSumVals.sort()
-
-                    log.write(l10.format(summary_field))
-                    dateCount = 1
-                    i = 0
-                    n = len(listSumVals)
-
-                    while i < n:
-
-                        try:
-                            if listSumVals[i] == listSumVals[i + 1]:
-                                dateCount += 1
-                            else:
-                                log.write(l11.format(listSumVals[i], dateCount))
-                                dateCount = 1
-                        except:
-                            log.write(l11.format(listSumVals[i], dateCount))
-                        i += 1
-
-                    log.write("\n")
-
-                # Remove duplicate incidents
-                if delete_duplicates:
-                    timeNow = dt.strftime(dt.now(), time_format)
-                    messages(m13.format(timeNow), log)
-
-                    incidents, req_nulls, countUpdate, countDelete = remove_dups(tempgdb,
-                                                                                 incidents,
-                                                                                 fl,
-                                                                                 matchfieldnames,
-                                                                                 id_field,
-                                                                                 report_date_field,
-                                                                                 loc_fields)
-
-                    if not req_nulls == "":
-                        req_nulls = "{}\n".format(req_nulls)
-                        messages(w3.format(req_nulls), log, 1)
-
-                    if not countUpdate == 0:
-                        messages(m14.format(countUpdate,inc_features), log)
-
-                    if countDelete > 0:
-                        messages(m15.format(countDelete,inc_features), log)
-
-                # Create features
-                tempFC = join(tempgdb, "tempDataLE")
-
-                # Create point features from spreadsheet
-
-                timeNow = dt.strftime(dt.now(), time_format)
-                messages(m1.format(timeNow), log)
-
-                records_to_add = 0
-                for r in arcpy.da.SearchCursor(incidents, id_field):
-                    records_to_add += 1
-
-                if records_to_add > 0:
-                    if loc_type == "ADDRESSES":
-
-                        timeNow = dt.strftime(dt.now(), time_format)
-                        messages(m3.format(timeNow), log)
-
-                        # Geocode the incidents
-                        arcpy.GeocodeAddresses_geocoding(incidents,
-                                                         locator,
-                                                         addresses,
-                                                         tempFC,
-                                                         "STATIC")
-                        
-
-                        # Initiate geocoding report counts
-                        countMatch = 0
-                        countTrueMatch = 0
-                        countUnmatch = 0
-
-                        # Create geocoding reports
-                        rptUnmatch = join(reports, "{0}_{1}.csv".format(
-                                                                fileNow, unmatch_name))
-
-                        fieldnames = [f.name for f in arcpy.ListFields(tempFC)]
-
-                        # Sort incidents based on match status
-                        statusIndex = fieldnames.index(status)
-                        locIndex = fieldnames.index(addr_type)
-
-                        # Write incidents that were not well geocoded to file and
-                        #       delete from temp directory
-                        with open (rptUnmatch, "w") as umatchFile:
-                            unmatchwriter = csv.writer(umatchFile)
-                            unmatchwriter.writerow(fieldnames)
-
-                            # Delete incidents that were not Matched
-                            countUnmatch = sort_records(tempFC, unmatchwriter,
-                                                        statusIndex, match_value,
-                                                        False, True)
-                            
-                            if not countUnmatch == 0:
-                                messages(w6.format(countUnmatch, rptUnmatch), log, 1)
-
-                            # Incidents that were not matched to an acceptable accuracy
-                            countMatch = sort_records(tempFC, unmatchwriter,
-                                                      locIndex, addrOK, False, True)
-
-                            if not countMatch == 0:
-                                messages(w7.format(countMatch, addrOK, rptUnmatch), log, 1)
-
-                            countTrueMatch = len(field_vals(tempFC, "OBJECTID"))
-
-                            messages(m16.format(countTrueMatch, inc_features), log)
+                    elif loc_field == loc_zip_field and zip_field != "":
+                        addresses += adr_string.format(loc_field, zip_field)
+                        loc_fields.append(zip_field)
 
                     else:
-                        # Create temporary output storage
+                        addresses += adr_string.format(loc_field, "<None>")
 
-                        tempFL = arcpy.MakeXYEventLayer_management(incidents,
-                                                                   lg_field,
-                                                                   lt_field,
-                                                                   "tempLayerLE",
-                                                                   coord_system)
+            # Get coordinate fields
+            else:
+                loc_fields = [lg_field, lt_field]
 
-                        # Convert the feature layer to a feature class to prevent
-                        #   field name changes
+            total_records = len(field_vals(incidents,id_field))
 
-                        arcpy.CopyFeatures_management(tempFL, tempFC)
-                        arcpy.Delete_management(tempFL)
+            messages(m17.format(total_records, incidents), log)
+
+            if not summary_field == "":
+                SumVals = field_vals(incidents, summary_field)
+                listSumVals = [val for val in SumVals if val != None]
+
+                if not len(SumVals) == len(listSumVals):
+                    print(m19.format(len(SumVals)-len(listSumVals)))
+                    log.write(m19.format(len(SumVals)-len(listSumVals)))
+                listSumVals.sort()
+
+                log.write(l10.format(summary_field))
+                dateCount = 1
+                i = 0
+                n = len(listSumVals)
+
+                while i < n:
+
+                    try:
+                        if listSumVals[i] == listSumVals[i + 1]:
+                            dateCount += 1
+                        else:
+                            log.write(l11.format(listSumVals[i], dateCount))
+                            dateCount = 1
+                    except:
+                        log.write(l11.format(listSumVals[i], dateCount))
+                    i += 1
+
+                log.write("\n")
+
+            # Remove duplicate incidents
+            if delete_duplicates:
+                timeNow = dt.strftime(dt.now(), time_format)
+                messages(m13.format(timeNow), log)
+
+                incidents, req_nulls, countUpdate, countDelete = remove_dups(tempgdb,
+                                                                                incidents,
+                                                                                fl,
+                                                                                matchfieldnames,
+                                                                                id_field,
+                                                                                report_date_field,
+                                                                                loc_fields)
+
+                if not req_nulls == "":
+                    req_nulls = "{}\n".format(req_nulls)
+                    messages(w3.format(req_nulls), log, 1)
+
+                if not countUpdate == 0:
+                    messages(m14.format(countUpdate,inc_features), log)
+
+                if countDelete > 0:
+                    messages(m15.format(countDelete,inc_features), log)
+
+            # Create features
+            tempFC = join(tempgdb, "tempDataLE")
+
+            # Create point features from spreadsheet
+
+            timeNow = dt.strftime(dt.now(), time_format)
+            messages(m1.format(timeNow), log)
+
+            records_to_add = 0
+            for r in arcpy.da.SearchCursor(incidents, id_field):
+                records_to_add += 1
+
+            if records_to_add > 0:
+                if loc_type == "ADDRESSES":
 
                     timeNow = dt.strftime(dt.now(), time_format)
-                    messages(m4.format(timeNow, inc_features), log)
+                    messages(m3.format(timeNow), log)
 
-                    # Fields that will be copied from geocode results to final fc
-                    copyfieldnames = []
-                    copyfieldnames.extend(matchfieldnames)
-                    copyfieldnames.append("SHAPE@XY")
-
-                    # Fields for error reporting
-                    errorfieldnames = []
-                    errorfieldnames.extend(matchfieldnames)
-                    errorfieldnames.insert(0, errorfield)
-                    errorfieldnames += [long_field, lat_field]
-
-                    #Remove USER_ from Field Names if Geocoded
-                    if loc_type == "ADDRESSES":
-                        for name in fieldnames:
-                            if name.replace("USER_", "") in incfieldnames:
-                                arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
-                            
-
-                    # Reproject the features
-                    sr_output = fl.properties.extent['spatialReference']['wkid']
-                    proj_out = "{}_proj".format(tempFC)
-                    arcpy.Project_management(tempFC, proj_out, sr_output)
-
-                    dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type']]
-
-                    #Convert to Feature Set
-                    fs = arcpy.FeatureSet()
-                    fs.load(proj_out)
+                    # Geocode the incidents
+                    arcpy.GeocodeAddresses_geocoding(incidents,
+                                                        locator,
+                                                        addresses,
+                                                        tempFC,
+                                                        "STATIC")
                     
-                    #Create ArcGIS Python API Features List
-                    fset = []
-                    for feature in json.loads(fs.JSON)["features"]:
-                        tempFeature = Feature(feature['geometry'], feature['attributes'])
-                        fset.append(tempFeature)
 
+                    # Initiate geocoding report counts
+                    countMatch = 0
+                    countTrueMatch = 0
+                    countUnmatch = 0
 
-                    #Convert all date values to UTC for records to add
-                    for feature in fset:
-                        for dateField in dateFields:
-                            if isinstance(feature.get_value(dateField), int):
-                                dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
-                            else:
-                                dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                            dateValue = int(str(dateValue.timestamp()*1000)[:13])
-                            feature.set_value(dateField, dateValue)
+                    # Create geocoding reports
+                    rptUnmatch = join(reports, "{0}_{1}.csv".format(
+                                                            fileNow, unmatch_name))
 
-                    #Append features to service
-                    fl.edit_features(fset)
+                    fieldnames = [f.name for f in arcpy.ListFields(tempFC)]
 
+                    # Sort incidents based on match status
+                    statusIndex = fieldnames.index(status)
+                    locIndex = fieldnames.index(addr_type)
 
-            except arcpy.ExecuteError:
-                print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
-                timeNow = dt.strftime(dt.now(), "{} {}".format(
-                                                    date_format, time_format))
-                arcpy.AddError("{} {}:\n".format(timeNow, gp_error))
-                arcpy.AddError("{}\n".format(arcpy.GetMessages(2)))
+                    # Write incidents that were not well geocoded to file and
+                    #       delete from temp directory
+                    with open (rptUnmatch, "w") as umatchFile:
+                        unmatchwriter = csv.writer(umatchFile)
+                        unmatchwriter.writerow(fieldnames)
 
-                log.write("{} ({}):\n".format(gp_error, timeNow))
-                log.write("{}\n".format(arcpy.GetMessages(2)))
+                        # Delete incidents that were not Matched
+                        countUnmatch = sort_records(tempFC, unmatchwriter,
+                                                    statusIndex, match_value,
+                                                    False, True)
+                        
+                        if not countUnmatch == 0:
+                            messages(w6.format(countUnmatch, rptUnmatch), log, 1)
 
-                for msg in range(0, arcpy.GetMessageCount()):
-                    if arcpy.GetSeverity(msg) == 2:
-                        code = arcpy.GetReturnCode(msg)
-                        print("Code: {}".format(code))
-                        print("Message: {}".format(arcpy.GetMessage(msg)))
+                        # Incidents that were not matched to an acceptable accuracy
+                        countMatch = sort_records(tempFC, unmatchwriter,
+                                                    locIndex, addrOK, False, True)
 
-            except Exception as ex:
-                print("{}: {}\n".format(py_error, ex))
-                timeNow = dt.strftime(dt.now(), "{}".format(time_format))
+                        if not countMatch == 0:
+                            messages(w7.format(countMatch, addrOK, rptUnmatch), log, 1)
 
-                arcpy.AddError("{} {}:\n".format(timeNow, py_error))
-                arcpy.AddError("{}\n".format(ex))
+                        countTrueMatch = len(field_vals(tempFC, "OBJECTID"))
 
-                log.write("{} {}:\n".format(timeNow, py_error))
-                log.write("{}\n".format(ex))
+                        messages(m16.format(countTrueMatch, inc_features), log)
 
-            finally:
-                # Clean up
-                try:
-                    arcpy.Delete_management(tempgdb)
-                except arcpy.ExecuteError:
-                    pass
+                else:
+                    # Create temporary output storage
 
-                try:
-                    rename(spreadsheet, join(output_dir, incident_filename))
-                except WindowsError:
-                    messages("Could not move file {} to {}".format(spreadsheet, output_dir), log)
+                    tempFL = arcpy.MakeXYEventLayer_management(incidents,
+                                                                lg_field,
+                                                                lt_field,
+                                                                "tempLayerLE",
+                                                                coord_system)
+
+                    # Convert the feature layer to a feature class to prevent
+                    #   field name changes
+
+                    arcpy.CopyFeatures_management(tempFL, tempFC)
+                    arcpy.Delete_management(tempFL)
 
                 timeNow = dt.strftime(dt.now(), time_format)
-                messages(m8.format(timeNow, spreadsheet), log)
+                messages(m4.format(timeNow, inc_features), log)
+
+                # Fields that will be copied from geocode results to final fc
+                copyfieldnames = []
+                copyfieldnames.extend(matchfieldnames)
+                copyfieldnames.append("SHAPE@XY")
+
+                # Fields for error reporting
+                errorfieldnames = []
+                errorfieldnames.extend(matchfieldnames)
+                errorfieldnames.insert(0, errorfield)
+                errorfieldnames += [long_field, lat_field]
+
+                #Remove USER_ from Field Names if Geocoded
+                if loc_type == "ADDRESSES":
+                    for name in fieldnames:
+                        if name.replace("USER_", "") in incfieldnames:
+                            arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
+                        
+
+                # Reproject the features
+                sr_output = fl.properties.extent['spatialReference']['wkid']
+                proj_out = "{}_proj".format(tempFC)
+                arcpy.Project_management(tempFC, proj_out, sr_output)
+
+                dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
+
+                #Convert to Feature Set
+                fs = arcpy.FeatureSet()
+                fs.load(proj_out)
+                
+                #Create ArcGIS Python API Features List
+                fset = []
+                for feature in json.loads(fs.JSON)["features"]:
+                    tempFeature = Feature(feature['geometry'], feature['attributes'])
+                    fset.append(tempFeature)
+
+
+                #Convert all date values to UTC for records to add
+                for feature in fset:
+                    for dateField in dateFields:
+                        if isinstance(feature.get_value(dateField), int):
+                            dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                        else:
+                            dateValue = dt.strptime(feature.get_value(dateField), timestamp)
+                        dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                        feature.set_value(dateField, dateValue)
+
+                #Append features to service
+                fl.edit_features(fset)
+
+
+        except arcpy.ExecuteError:
+            print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
+            timeNow = dt.strftime(dt.now(), "{} {}".format(
+                                                date_format, time_format))
+            arcpy.AddError("{} {}:\n".format(timeNow, gp_error))
+            arcpy.AddError("{}\n".format(arcpy.GetMessages(2)))
+
+            log.write("{} ({}):\n".format(gp_error, timeNow))
+            log.write("{}\n".format(arcpy.GetMessages(2)))
+
+            for msg in range(0, arcpy.GetMessageCount()):
+                if arcpy.GetSeverity(msg) == 2:
+                    code = arcpy.GetReturnCode(msg)
+                    print("Code: {}".format(code))
+                    print("Message: {}".format(arcpy.GetMessage(msg)))
+
+        except Exception as ex:
+            print("{}: {}\n".format(py_error, ex))
+            timeNow = dt.strftime(dt.now(), "{}".format(time_format))
+
+            arcpy.AddError("{} {}:\n".format(timeNow, py_error))
+            arcpy.AddError("{}\n".format(ex))
+
+            log.write("{} {}:\n".format(timeNow, py_error))
+            log.write("{}\n".format(ex))
+
+        finally:
+             #Clean up
+            try:
+                arcpy.Delete_management(tempgdb)
+            except arcpy.ExecuteError:
+                pass
+
+            timeNow = dt.strftime(dt.now(), time_format)
+            messages(m8.format(timeNow, incidents), log)
 
 if __name__ == '__main__':
     argv = tuple(arcpy.GetParameterAsText(i)
