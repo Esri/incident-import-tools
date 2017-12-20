@@ -720,6 +720,9 @@ def main(config_file, *args):
 
                         countTrueMatch = len(field_vals(tempFC, "OBJECTID"))
 
+                        #Change records to add value to successful geocodes # for reporting in log
+                        records_to_add = countTrueMatch
+
                         messages(m16.format(countTrueMatch, inc_features), log)
 
                 else:
@@ -757,14 +760,12 @@ def main(config_file, *args):
                         if name.replace("USER_", "") in incfieldnames:
                             arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
                         
-
                 # Reproject the features
                 sr_output = fl.properties.extent['spatialReference']['wkid']
                 proj_out = "{}_proj".format(tempFC)
                 arcpy.Project_management(tempFC, proj_out, sr_output)
 
                 dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
-
                 #Convert to Feature Set
                 fs = arcpy.FeatureSet()
                 fs.load(proj_out)
@@ -774,7 +775,6 @@ def main(config_file, *args):
                 for feature in json.loads(fs.JSON)["features"]:
                     tempFeature = Feature(feature['geometry'], feature['attributes'])
                     fset.append(tempFeature)
-
 
                 #Convert all date values to UTC for records to add
                 for feature in fset:

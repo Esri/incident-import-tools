@@ -22,7 +22,7 @@ def write_config(params, config, section):
     config.add_section(section)
 
     for i in range(0, len(names)):
-        if vals[i] in ["#", ""]:
+        if vals[i] in ["#"]:
             vals[i] = '""'
         config.set(section, names[i], vals[i])
 
@@ -62,7 +62,7 @@ def main(config_file,
          locator="",
          fieldmap_option="",
          fieldmap="",
-         timestamp_format="%%m/%%d/%%Y %%H:%%M",
+         timestamp_format="",
          *args):
     """
     Reads in a series of values from a
@@ -70,32 +70,34 @@ def main(config_file,
     configuration file
     """
 
-    config = configparser.RawConfigParser()
-    arcpy.AddMessage('Configuration file created')
-
+    
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
+        arcpy.AddMessage('Validating Field Mapping...\n')
         fms = processFieldMap(fieldmap)
         if address_field not in fms:
             arcpy.AddError("The target field for the address field {} has not been specified in the field map".format(address_field))
             errorCount += 1
         else:
             address_field = fms[address_field]["target"]
-        if city_field not in fms:
+        if city_field and city_field not in fms:
             arcpy.AddError("The target field for the city field {} has not been specified in field map".format(city_field))
             errorCount += 1
         else:
-            city_field = fms[city_field]["target"]
-        if state_field not in fms:
+            if city_field:
+                city_field = fms[city_field]["target"]
+        if state_field and state_field not in fms:
             arcpy.AddError("The target field for the state field {} has not been specified in the field map".format(state_field))
             errorCount += 1
         else:
-            state_field = fms[state_field]["target"]
-        if zip_field not in fms:
+            if state_field:
+                state_field = fms[state_field]["target"]
+        if zip_field and zip_field not in fms:
             arcpy.AddError("The target field for the zip field {} has not been specified in the field map".format(zip_field))
             errorCount += 1
         else:
-            zip_field = fms[zip_field]["target"]
+            if zip_field:
+                zip_field = fms[zip_field]["target"]
         if summary_field not in fms:
             arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
             errorCount += 1
@@ -114,7 +116,14 @@ def main(config_file,
         if errorCount > 0:
             sys.exit()
 
+    if not timestamp_format:
+        timestamp_format = "%m/%d/%Y %H:%M"
+
     timestamp_format = timestamp_format.replace("%","%%")
+
+    config = configparser.RawConfigParser()
+    arcpy.AddMessage('Configuration file created')
+
     # Add general parameters
     section = 'GENERAL'
     p_dict = OrderedDict([('source_table', source_table),

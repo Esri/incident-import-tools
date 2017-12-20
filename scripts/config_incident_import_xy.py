@@ -22,7 +22,7 @@ def write_config(params, config, section):
     config.add_section(section)
 
     for i in range(0, len(names)):
-        if vals[i] in ["#", ""]:
+        if vals[i] in ["#"]:
             vals[i] = '""'
         config.set(section, names[i], vals[i])
 
@@ -61,7 +61,7 @@ def main(config_file,
          ignore_zeros=False,
          fieldmap_option="",
          fieldmap="",
-         timestamp_format="%%m/%%d/%%Y %%H:%%M",
+         timestamp_format="",
          *args):
     """
     Reads in a series of values from a
@@ -69,11 +69,9 @@ def main(config_file,
     configuration file
     """
 
-    config = configparser.RawConfigParser()
-    arcpy.AddMessage('Configuration file created')
-
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
+        arcpy.AddMessage('Validating Field Mapping...\n')
         fms = processFieldMap(fieldmap)
         if Xfield not in fms:
             arcpy.AddError("The target field for the X Coordinate field {} has not been specified in field map".format(Xfield))
@@ -104,7 +102,14 @@ def main(config_file,
             sys.exit()
 
 
+    if not timestamp_format:
+        timestamp_format = "%m/%d/%Y %H:%M"
+
     timestamp_format = timestamp_format.replace("%","%%")
+
+    config = configparser.RawConfigParser()
+    arcpy.AddMessage('Configuration file created')
+
     # Add general parameters
     section = 'GENERAL'
     p_dict = OrderedDict([('source_table', source_table),
