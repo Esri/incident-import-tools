@@ -252,6 +252,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
     # Create temporary table of the new data
 ##    tempTable = join(tempgdb, "tempTableLE")
     tempTable = arcpy.CopyRows_management(new_features, join('in_memory','tempTableLE'))
+    tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
 
     # Field indices for identifying most recent record
     id_index = fields.index(id_field)
@@ -273,12 +274,22 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
     # Delete all but the most recent report if the table contains duplicates
     all_ids = [str(csvrow[id_index]) for csvrow in arcpy.da.SearchCursor(tempTable, fields)]
+
+    # Clean decimal values out of current IDs if they exist. Use case:
+    # User may assume that ID field is an integer but in reality Excel has formatted their field as
+    # an double or float without user recognizing it
+
+    if tableidFieldType in ["Double", "Single"]:
+        all_ids = [idrec.split(".")[0] for idrec in all_ids]
+
     dup_ids = [id for id in list(set(all_ids)) if all_ids.count(id) > 1]
     
     if dup_ids:
         for dup_id in dup_ids:
-            where_dup = """{0} = {1}""".format(id_field, dup_id)
-
+            if tableidFieldType in ["Double", "Single", "Integer", "SmallInteger"]:
+                where_dup = """{} = {}""".format(id_field, dup_id)
+            else:
+                where_dup = """{} = '{}'""".format(id_field, dup_id)
             with arcpy.da.UpdateCursor(tempTable, [dt_field,loc_fields], where_dup) as dup_rows:
                 recent_date = ""
                 while len(dup_rows) > 1:
@@ -288,14 +299,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                         else:
                             dup_rows.delete(dup_row)
                             del_count += 1
-
-    # Clean decimal values out of current IDs if they exist. Use case:
-    # User may assume that ID field is an integer but in reality Excel has formatted their field as
-    # an double or float without user recognizing it
-
-    tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
-    if tableidFieldType in ["Double", "Single"]:
-        all_ids = [idrec.split(".")[0] for idrec in all_ids]
 
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
@@ -767,18 +770,13 @@ def main(config_file, *args):
                     errorfieldnames.extend(matchfieldnames)
                     errorfieldnames.insert(0, errorfield)
                     errorfieldnames += [long_field, lat_field]
-
-                    #Remove USER_ from Field Names if Geocoded
-                    if loc_type == "ADDRESSES":
-                        for name in fieldnames:
-                            if name.replace("USER_", "") in incfieldnames:
-                                arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
                             
                     # Reproject the features
                     sr_output = fl.properties.extent['spatialReference']['wkid']
                     proj_out = "{}_proj".format(tempFC)
                     arcpy.Project_management(tempFC, proj_out, sr_output)
 
+                    #Collect all the date fields that will be updated
                     dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
 
                     #arcpy.Append_management(proj_out, inc_features,"NO_TEST")
@@ -786,9 +784,26 @@ def main(config_file, *args):
                     fs = arcpy.FeatureSet()
                     fs.load(proj_out)
                     
+                    features = json.loads(fs.JSON)["features"]
+
+                    #Remove 'USER_' added from geocoding from field names in each individual feature to be appended to feature service
+                    if loc_type == "ADDRESSES":
+                        for feature in features:
+                            for attribute in feature['attributes']:
+                                    if attribute[:5] == "USER_":
+                                        if attribute.replace("USER_", "") in matchfieldnames:
+                                            feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
+
+                    #Remove non matching fields from features to reduce payload being sent in 'edit_features' call
+                    for feature in features:                
+                        for attribute in list(feature['attributes']):
+                            if attribute not in matchfieldnames:
+                                del feature['attributes'][attribute]
+                                
+
                     #Create ArcGIS Python API Features List
                     fset = []
-                    for feature in json.loads(fs.JSON)["features"]:
+                    for feature in features:
                         tempFeature = Feature(feature['geometry'], feature['attributes'])
                         fset.append(tempFeature)
 
@@ -801,8 +816,6 @@ def main(config_file, *args):
                                 dateValue = dt.strptime(feature.get_value(dateField), timestamp)
                             dateValue = int(str(dateValue.timestamp()*1000)[:13])
                             feature.set_value(dateField, dateValue)
-                    #arcpy.AddMessage(fset)
-                    #Append features to service
                     fl.edit_features(fset)
 
 
