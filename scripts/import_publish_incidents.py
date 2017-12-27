@@ -101,7 +101,7 @@ m3 = "{}  Geocoding incidents...\n"
 m4 = "{}  Appending {} updated incident(s) to {}...\n"
 ##m5 = "{}  Publishing incidents...\n"
 m6 = "{} Copying source table to new field mapped table...\n"
-m8 = "{}  Completed {}\n"
+m8 = "{}  Completed import of {}\n"
 m13 = "{}  Updating older reports and filtering out duplicate records...\n"
 m14 = "  -- {} features updated in {}.\n\n"
 m15 = "  -- {} records will not be processed further. They may contain null values in required fields, they may be duplicates of other records in the spreadsheet, or they may be older than records that already exist in {}.\n\n"
@@ -289,10 +289,16 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                             dup_rows.delete(dup_row)
                             del_count += 1
 
+    # Clean decimal values out of current IDs if they exist. Use case:
+    # User may assume that ID field is an integer but in reality Excel has formatted their field as
+    # an double or float without user recognizing it
+
+    tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
+    if tableidFieldType in ["Double", "Single"]:
+        all_ids = [idrec.split(".")[0] for idrec in all_ids]
 
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
-
     
     # Use id values common to service and new data to build a where clause
     common_ids = list(set(all_ids).intersection([str(service_id.get_value(id_field)) for service_id in service_ids]))
@@ -307,12 +313,10 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
         editFeatures = []
 
         for servicerow in curFeaturesFS.features:
-
             # Get the id value for the row
             idVal = cast_id(servicerow.get_value(id_field), service_field_types[id_field])
-
             # Grab the attributes values associated with that id
-            if isinstance(idVal, int):
+            if tableidFieldType in ["Double", "Single", "Integer", "SmallInteger"]:
                 where_service_dup = """{} = {}""".format(id_field, idVal)
             else:
                 where_service_dup = """{} = '{}'""".format(id_field, idVal)
@@ -371,14 +375,22 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                             #Create a unix timestamp integer in UTC time to send to service
                                             fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
                                     else:
-                                        fvals['ValueToSet'] = csvdup[i]
+                                        # If a source table value is a whole number float such as 2013.0 and the target stores
+                                        # that number as 2013 either as a string or a integer. Convert it to an integer here
+                                        # to prevent a mismatch between the source and the target in the future
+                                        try:
+                                            if int(csvdup[i]) == csvdup[i]:
+                                                fvals['ValueToSet'] = int(csvdup[i])
+                                            else:
+                                                fvals['ValueToSet'] = csvdup[i]
+                                        except (TypeError, ValueError):
+                                            fvals['ValueToSet'] = csvdup[i]
 
                                     field_info.append(fvals)
-                                
                                 #Check to see if any attributes are different between target service and source table
                                 updateNeeded = False
                                 for fld in field_info:
-                                    if servicerow.get_value(fld["FieldName"]) != fld['ValueToSet']:
+                                    if str(servicerow.get_value(fld["FieldName"])) != str(fld['ValueToSet']):
                                         updateNeeded = True
                                 
                                 #At least one attribute change detected so send new attributes to service
@@ -387,7 +399,6 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                         servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
                                     editFeatures.append(servicerow)
                                     update_count += 1
-
                                 # Remove the record from the table
                                 csvdups.deleteRow()
 
@@ -429,6 +440,7 @@ def main(config_file, *args):
         raise Exception(e1.format("Configuration file", config_file, ""))
 
     # Get general configuration values
+    orig_incidents = cfg.get('GENERAL', 'source_table')
     incidents = cfg.get('GENERAL', 'source_table')
     inc_features = cfg.get('GENERAL', 'target_features')
     id_field = cfg.get('GENERAL', 'incident_id')
@@ -495,8 +507,8 @@ def main(config_file, *args):
             timeNow = dt.strftime(dt.now(), time_format)
             
             # Create Field Mapping Object and Map incidents to new table with new schema    
-            messages(m2.format(timeNow), log)
             if fieldmap_option == "Use Field Mapping":
+                messages(m2.format(timeNow), log)
                 fieldmap = processFieldMap(fieldmap)
                 afm = arcpy.FieldMappings()
                 for key, value in fieldmap.items():
@@ -602,7 +614,7 @@ def main(config_file, *args):
 
             total_records = len(field_vals(incidents,id_field))
 
-            messages(m17.format(total_records, cfg.get('GENERAL','source_table')), log)
+            messages(m17.format(total_records, orig_incidents), log)
 
             if not summary_field == "":
                 SumVals = field_vals(incidents, summary_field)
@@ -739,55 +751,59 @@ def main(config_file, *args):
 
                     arcpy.CopyFeatures_management(tempFL, tempFC)
                     arcpy.Delete_management(tempFL)
-
-                timeNow = dt.strftime(dt.now(), time_format)
-                messages(m4.format(timeNow, records_to_add ,inc_features), log)
-
-                # Fields that will be copied from geocode results to final fc
-                copyfieldnames = []
-                copyfieldnames.extend(matchfieldnames)
-                copyfieldnames.append("SHAPE@XY")
-
-                # Fields for error reporting
-                errorfieldnames = []
-                errorfieldnames.extend(matchfieldnames)
-                errorfieldnames.insert(0, errorfield)
-                errorfieldnames += [long_field, lat_field]
-
-                #Remove USER_ from Field Names if Geocoded
-                if loc_type == "ADDRESSES":
-                    for name in fieldnames:
-                        if name.replace("USER_", "") in incfieldnames:
-                            arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
-                        
-                # Reproject the features
-                sr_output = fl.properties.extent['spatialReference']['wkid']
-                proj_out = "{}_proj".format(tempFC)
-                arcpy.Project_management(tempFC, proj_out, sr_output)
-
-                dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
-                #Convert to Feature Set
-                fs = arcpy.FeatureSet()
-                fs.load(proj_out)
                 
-                #Create ArcGIS Python API Features List
-                fset = []
-                for feature in json.loads(fs.JSON)["features"]:
-                    tempFeature = Feature(feature['geometry'], feature['attributes'])
-                    fset.append(tempFeature)
+                #Checking if records to add value has been changed by geocoding results countTrueMatch
+                if records_to_add > 0:
+                    timeNow = dt.strftime(dt.now(), time_format)
+                    messages(m4.format(timeNow, records_to_add ,inc_features), log)
 
-                #Convert all date values to UTC for records to add
-                for feature in fset:
-                    for dateField in dateFields:
-                        if isinstance(feature.get_value(dateField), int):
-                            dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
-                        else:
-                            dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                        dateValue = int(str(dateValue.timestamp()*1000)[:13])
-                        feature.set_value(dateField, dateValue)
+                    # Fields that will be copied from geocode results to final fc
+                    copyfieldnames = []
+                    copyfieldnames.extend(matchfieldnames)
+                    copyfieldnames.append("SHAPE@XY")
 
-                #Append features to service
-                fl.edit_features(fset)
+                    # Fields for error reporting
+                    errorfieldnames = []
+                    errorfieldnames.extend(matchfieldnames)
+                    errorfieldnames.insert(0, errorfield)
+                    errorfieldnames += [long_field, lat_field]
+
+                    #Remove USER_ from Field Names if Geocoded
+                    if loc_type == "ADDRESSES":
+                        for name in fieldnames:
+                            if name.replace("USER_", "") in incfieldnames:
+                                arcpy.AlterField_management(tempFC, name, name.replace("USER_", ""))
+                            
+                    # Reproject the features
+                    sr_output = fl.properties.extent['spatialReference']['wkid']
+                    proj_out = "{}_proj".format(tempFC)
+                    arcpy.Project_management(tempFC, proj_out, sr_output)
+
+                    dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
+
+                    #arcpy.Append_management(proj_out, inc_features,"NO_TEST")
+                    #Convert to Feature Set
+                    fs = arcpy.FeatureSet()
+                    fs.load(proj_out)
+                    
+                    #Create ArcGIS Python API Features List
+                    fset = []
+                    for feature in json.loads(fs.JSON)["features"]:
+                        tempFeature = Feature(feature['geometry'], feature['attributes'])
+                        fset.append(tempFeature)
+
+                    #Convert all date values to UTC for records to add
+                    for feature in fset:
+                        for dateField in dateFields:
+                            if isinstance(feature.get_value(dateField), int):
+                                dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                            else:
+                                dateValue = dt.strptime(feature.get_value(dateField), timestamp)
+                            dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                            feature.set_value(dateField, dateValue)
+                    #arcpy.AddMessage(fset)
+                    #Append features to service
+                    fl.edit_features(fset)
 
 
         except arcpy.ExecuteError:
@@ -824,7 +840,7 @@ def main(config_file, *args):
                 pass
 
             timeNow = dt.strftime(dt.now(), time_format)
-            messages(m8.format(timeNow, incidents), log)
+            messages(m8.format(timeNow, orig_incidents), log)
 
 if __name__ == '__main__':
     argv = tuple(arcpy.GetParameterAsText(i)
