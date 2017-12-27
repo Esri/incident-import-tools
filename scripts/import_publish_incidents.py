@@ -313,7 +313,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
         curFeaturesFS = cur_features.query(where=where_clause, out_fields=",".join(fields), returnGeometry=False)
 
-        editFeatures = []
+        updateFeatures = []
 
         for servicerow in curFeaturesFS.features:
             # Get the id value for the row
@@ -369,7 +369,13 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
                                     # Make sure doubles get processed as doubles
                                     if 'Double' in service_field_types[fields[i]]:
-                                        fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
+                                        try:
+                                            if int(csvdup[i]) == csvdup[i]:
+                                                fvals['ValueToSet'] = int(csvdup[i])
+                                            else:
+                                                fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
+                                        except (TypeError, ValueError):
+                                            fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
                                     elif 'Date' in service_field_types[fields[i]]:
                                         try:
                                             #DateString -> Datetime -> UNIX timestamp integer
@@ -400,7 +406,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                                 if updateNeeded:
                                     for fld in field_info:
                                         servicerow.set_value(fld["FieldName"],fld['ValueToSet'])
-                                    editFeatures.append(servicerow)
+                                    updateFeatures.append(servicerow)
                                     update_count += 1
                                 # Remove the record from the table
                                 csvdups.deleteRow()
@@ -413,8 +419,8 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                             except RuntimeError:
                                 del_where = """{} = {}""".format(id_field, idVal)
                                 cur_features.delete_features(where=del_where)
-
-        cur_features.edit_features(updates=editFeatures)
+        # Sends updated features to service in batches of 100
+        editFeatures(updateFeatures,cur_features,"update")
 
 ##                    break
 
@@ -422,6 +428,56 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
     return tempTable, null_records, update_count, del_count
 
 # End remove_dups function
+
+def editFeatures(features: [Feature], fl: FeatureLayer, mode: str):
+    retval = False
+    error = False
+    # add section
+    try:
+        arcpy.SetProgressor("default","Editing Features")
+        arcpy.SetProgressorLabel("Editing Features")
+        try:
+            numFeat = len(features)
+        except:
+            numFeat = 0
+        if numFeat == 0:
+            arcpy.AddMessage("0 features to add or edit")            
+            return True # nothing to add is OK
+        if numFeat > 100:
+            chunk = 100
+        else:
+            chunk = numFeat
+        featuresProcessed = 0
+        while featuresProcessed < numFeat  and error == False:
+            next = featuresProcessed + chunk
+            featuresChunk = features[featuresProcessed:next]
+            msg = "Sending edited features " + str(featuresProcessed) + " to " + str(next)
+            arcpy.SetProgressorLabel(msg)
+            if mode == 'add':
+                result = fl.edit_features(adds=featuresChunk)
+            else:
+                result = fl.edit_features(updates=featuresChunk)
+            try:
+                if result['error'] != None:
+                    retval = False
+                    arcpy.AddMessage("Send edited features to Service failed")
+                    error = True
+            except:
+                try:
+                    lenAdded = len(result['addResults'])
+                    retval = True
+                except:
+                    retval = False
+                    arcpy.AddMessage("Send edited features to Service failed. Unfortunately you will need to re-run this tool.")
+                    error = True
+            featuresProcessed += chunk
+    except:
+        retval = False
+        arcpy.AddMessage("Add features to Service failed")
+        error = True
+        pass
+
+    return retval
 
 def main(config_file, *args):
     """
@@ -760,6 +816,8 @@ def main(config_file, *args):
                     timeNow = dt.strftime(dt.now(), time_format)
                     messages(m4.format(timeNow, records_to_add ,inc_features), log)
 
+                    arcpy.SetProgressor("default", "Preparing features to be sent to service")
+
                     # Fields that will be copied from geocode results to final fc
                     copyfieldnames = []
                     copyfieldnames.extend(matchfieldnames)
@@ -779,7 +837,6 @@ def main(config_file, *args):
                     #Collect all the date fields that will be updated
                     dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
 
-                    #arcpy.Append_management(proj_out, inc_features,"NO_TEST")
                     #Convert to Feature Set
                     fs = arcpy.FeatureSet()
                     fs.load(proj_out)
@@ -794,7 +851,7 @@ def main(config_file, *args):
                                         if attribute.replace("USER_", "") in matchfieldnames:
                                             feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
 
-                    #Remove non matching fields from features to reduce payload being sent in 'edit_features' call
+                    #Remove non matching fields from features to reduce payload being sent in 'edit_features' (adding new features) call
                     for feature in features:                
                         for attribute in list(feature['attributes']):
                             if attribute not in matchfieldnames:
@@ -816,7 +873,12 @@ def main(config_file, *args):
                                 dateValue = dt.strptime(feature.get_value(dateField), timestamp)
                             dateValue = int(str(dateValue.timestamp()*1000)[:13])
                             feature.set_value(dateField, dateValue)
-                    fl.edit_features(fset)
+                    
+                    arcpy.ResetProgressor()
+                    arcpy.SetProgressor("default", "Appending features to target features" )
+
+                    #Send new features to service in batches of 100
+                    editFeatures(fset, fl, "add")
 
 
         except arcpy.ExecuteError:
