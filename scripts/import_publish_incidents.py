@@ -107,7 +107,7 @@ m14 = "  -- {} features updated in {}.\n\n"
 m15 = "  -- {} records will not be processed further. They may contain null values in required fields, they may be duplicates of other records in the spreadsheet, or they may be older than records that already exist in {}.\n\n"
 m16 = "  -- {} records successfully geocoded.\n\n"
 m17 = "  -- {} records found in spreadsheet {}.\n\n"
-##m18 = "  -- {} records successfully appended to {}.\n\n"
+m18 = "  -- {} records successfully appended to {}.\n\n"
 m19 = "{} records are not included in this summary because they did not contain a valid value in the summary field.\n"
 
 # Environment settings
@@ -174,7 +174,7 @@ def field_test(in_fc, in_fields, out_fields, required=False):
 
 # End field_test function
 
-def compare_locations(fields, servicerow, tablerow, loc_fields):
+def compare_locations_fs(fields, servicerow, tablerow, loc_fields):
     """Compares the values of each of a list of fields with
         the corresponding values in a dictionary.
         Compares values accross field types.
@@ -237,30 +237,14 @@ def processFieldMap(fieldmapstring):
         fmsObj.update(fmObj)
     return fmsObj
 
-def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields, timestamp):
-    """Compares records with matching ids and determines which is more recent.
-        If the new record is older than the existing record, no updates
-        If the new record has the same or a more recent date, the locations
-            are compared:
-
-            If the location has changed the existing record is deleted
-            If the locations are the same the existing record attributes
-                are updated"""
-    update_count = 0
-    del_count = 0
-
+def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fields):
     # Create temporary table of the new data
-##    tempTable = join(tempgdb, "tempTableLE")
     tempTable = arcpy.CopyRows_management(new_features, join('in_memory','tempTableLE'))
     tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
 
     # Field indices for identifying most recent record
-    id_index = fields.index(id_field)
-    dt_index = fields.index(dt_field)
-    # service field types
-    service_field_types = {}
-    for field in cur_features.properties.fields:
-        service_field_types[field['name']] = field['type']
+    id_index = matchingfields.index(id_field)
+    dt_index = matchingfields.index(dt_field)
 
     # Record and delete rows with null values that cannot be processed
     where_null = """{0} IS NULL OR {1} IS NULL""".format(id_field, dt_field)
@@ -273,7 +257,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                 del_count += 1
 
     # Delete all but the most recent report if the table contains duplicates
-    all_ids = [str(csvrow[id_index]) for csvrow in arcpy.da.SearchCursor(tempTable, fields)]
+    all_ids = [str(csvrow[id_index]) for csvrow in arcpy.da.SearchCursor(tempTable, matchingfields)]
 
     # Clean decimal values out of current IDs if they exist. Use case:
     # User may assume that ID field is an integer but in reality Excel has formatted their field as
@@ -299,7 +283,28 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                         else:
                             dup_rows.delete(dup_row)
                             del_count += 1
+    
+    return tempTable, tableidFieldType, dt_index, all_ids, null_records
 
+def remove_dups_fs(new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields, timestamp):
+    """Compares records with matching ids and determines which is more recent.
+        If the new record is older than the existing record, no updates
+        If the new record has the same or a more recent date, the locations
+            are compared:
+
+            If the location has changed the existing record is deleted
+            If the locations are the same the existing record attributes
+                are updated"""
+    update_count = 0
+    del_count = 0
+
+    tempTable, tableidFieldType, dt_index, all_ids, null_records = _prep_source_table(new_features, fields, id_field, dt_field, loc_fields)
+    
+    # service field types
+    service_field_types = {}
+    for field in cur_features.properties.fields:
+        service_field_types[field['name']] = field['type']
+    
     # Look for reports that already exist in the service
     service_ids = cur_features.query(where="1=1",out_fields=id_field, returnGeometry=False)
     
@@ -339,8 +344,8 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
                         else:
                             date1 = dt.strptime(csvdup[dt_index],timestamp)
 
-                        date1.replace(microsecond = 0)
-                        date2.replace(microsecond = 0)
+                        date1 = date1.replace(microsecond = 0)
+                        date2 = date2.replace(microsecond = 0)
                     except TypeError:
                         raise Exception(e15.format(dt_field, new_features, timestamp))
 
@@ -351,7 +356,7 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
 
                     # Otherwise, compare location values
                     else:
-                        loc_status = compare_locations(fields, servicerow, csvdup, loc_fields)
+                        loc_status = compare_locations_fs(fields, servicerow, csvdup, loc_fields)
                         # If the location has changed
                         if loc_status:
 
@@ -422,10 +427,279 @@ def remove_dups(tempgdb, new_features, cur_features: FeatureLayer, fields, id_fi
         # Sends updated features to service in batches of 100
         editFeatures(updateFeatures,cur_features,"update")
 
-##                    break
+    ##                    break
 
     # Return the records to geocode
     return tempTable, null_records, update_count, del_count
+
+def compare_dates_fc(fields, dt_field, row, id_vals, timestamp):
+    """Compares date values in a row and a dictionary.
+        Returns True if the row date is the more recent value."""
+
+    status = False
+
+    dt_index = fields.index(dt_field)
+
+    # Create datetime items from string dates if necessary
+    try:
+        row_date = dt.strptime(row[dt_index],timestamp)
+    except TypeError:
+        # Date values OK
+        if isinstance(row[dt_index], dt):
+            row_date = row[dt_index]
+        # Fail if non-date value
+        else:
+            raise Exception(e15.format(dt_field, "", timestamp))
+
+    try:
+        dict_date = dt.strptime(id_vals[dt_field],timestamp)
+    except TypeError:
+        if isinstance(id_vals[dt_field], dt):
+            dict_date = id_vals[dt_field]
+        else:
+            raise Exception(e15.format(dt_field, "", timestamp))
+
+    row_date = row_date.replace(microsecond= 0)
+    dict_date = dict_date.replace(microsecond= 0)
+
+    if dict_date < row_date:
+        status = True
+    else:
+        status = False
+
+    return status
+
+# End compare_dates_fc function
+
+
+def compare_locations_fc(fields, fcrow, id_vals, loc_fields):
+    """Compares the values of each of a list of fields with
+        the corresponding values in a dictionary.
+        Compares values accross field types.
+        Returns True if the values are different"""
+
+    status = False
+
+    for loc_field in loc_fields:
+
+        if loc_field in fields:
+            loc_index = fields.index(loc_field)
+
+            try:
+                if id_vals[loc_field].is_integer():
+                        id_vals[loc_field] = int(id_vals[loc_field])
+            except AttributeError:
+                pass
+
+            try:
+                if fcrow[loc_index].is_integer():
+                    fcrow[loc_index] = int(fcrow[loc_index])
+            except AttributeError:
+                pass
+
+            if not str(id_vals[loc_field]).upper() == str(fcrow[loc_index]).upper():
+                status = True
+                break
+    if status:
+        arcpy.AddMessage(str(id_vals[loc_field]).upper() + " " + str(fcrow[loc_index]).upper())
+    return status
+
+# End compare_locs_fc function
+
+
+def update_dictionary_fc(fields, values, dictionary):
+    """Update values in a dictionary using a table row"""
+    for i in range(0, len(fields)):
+        # Update the dictionary with the more recent values
+        dictionary[fields[i]] = values[i]
+        i += 1
+
+    return dictionary
+
+# End update_dictionary_fc function
+
+
+def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_fields, timestamp):
+    """Compares records with matching ids and determines which is more recent.
+        If the new record is older than the existing record, no updates
+        If the new record has the same or a more recent date, the locations
+            are compared:
+            If the location has changed the existing record is deleted
+            If the locations are the same the existing record attributes
+                are updated"""
+    # Create temporary table of the new data
+    tempTable = arcpy.CopyRows_management(new_features, join('in_memory','tempTableLE'))
+    
+    tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
+
+    # Dictionary of attributes from most recent report
+    att_dict = {}
+
+    # Field indices for identifying most recent record
+    id_index = fields.index(id_field)
+    dt_index = fields.index(dt_field)
+
+    field_type = arcpy.ListFields(cur_features, id_field)[0].type
+
+    # Records with null values that cannot be processed
+    null_records = ""
+
+    # Build dictionary of most recent occurance of each incident in the spreadsheet
+    with arcpy.da.SearchCursor(tempTable, fields) as csvrows:
+
+        for csvrow in csvrows:
+
+            idVal = csvrow[id_index]
+            dtVal = csvrow[dt_index]
+
+            # Process only rows containing all required values
+            if idVal is None or dtVal is None:
+                # If required values are missing, write the row out
+                null_records = "{}{}\n".format(null_records, csvrow)
+
+            else:
+                try:
+                    if idVal.is_integer():
+                        idVal = int(idVal)
+                except AttributeError:
+                    pass
+
+                idVal = cast_id(idVal, field_type)
+                
+                try:
+                    # Try to find the id in the dictionary
+                    id_vals = att_dict[idVal]
+                    
+                    # Test if the new row is more recent
+                    status = compare_dates_fc(fields, dt_field, csvrow, id_vals, timestamp)
+
+                    # If it is, update the values in the dictionary
+                    if status:
+                        id_vals = update_dictionary_fc(fields, csvrow, id_vals)
+
+                except KeyError:
+                    # If the id isn't in the dictionary, build a dictionary
+                    id_vals = {}
+                    id_vals = update_dictionary_fc(fields, csvrow, id_vals)
+                    att_dict[idVal] = id_vals
+
+    # Compare the existing features to the dictionary to find updated incidents
+
+    update_count = 0
+
+    dateFields = [field.name for field in arcpy.ListFields(cur_features, field_type="Date") if field.name in fields]
+
+    if len(att_dict) > 0:
+
+        # Use the dictionary keys to build a where clause
+        if not len(att_dict) == 1:
+            vals = tuple(att_dict.keys())
+            where_clause = """{0} IN {1}""".format(id_field, vals)
+        else:
+            if tableidFieldType in ["Double", "Single", "Integer", "SmallInteger"]:
+                where_clause = """{} = {}""".format(id_field, att_dict.keys()[0])
+            else:
+                where_clause = """{} = '{}'""".format(id_field, att_dict.keys()[0])
+
+        with arcpy.da.UpdateCursor(cur_features, fields, where_clause) as fcrows:
+            for fcrow in fcrows:
+
+                # Get the id value for the row
+                idVal = fcrow[id_index]
+
+                idVal = cast_id(idVal, field_type)
+
+                try:
+                    # Grab the attributes values associated with that id from source table
+                    id_vals = att_dict[idVal]
+
+                    # Test if fc record is more recent (date_status = True)
+                    try:
+                        date_status = compare_dates_fc(fields,dt_field, fcrow, id_vals, timestamp)
+
+                    except TypeError:
+                        raise Exception(e15.format(dt_field, new_features, timestamp))
+
+                    # If fc more recent, update the values in the dictionary
+                    if date_status:
+                        id_vals = update_dictionary_fc(fields, fcrow, id_vals)
+
+                    else:
+                        loc_status = compare_locations_fc(fields, fcrow, id_vals, loc_fields)
+
+                        # If the location has changed
+                        if loc_status:
+
+                            # Delete the row from the feature class
+                            fcrows.deleteRow()
+
+                        else:
+                            # Same location, try to update the feature attributes
+                            try:
+                                i = 0
+                                while i <= len(fields) - 1:
+                                    fcrow[i] = id_vals[fields[i]]
+                                    i += 1
+                                fcrows.updateRow(fcrow)
+                                
+                                update_count += 1
+
+                                # Delete the record from the dictionary
+                                del att_dict[idVal]
+
+                            # If there is a field type mismatch between the dictionary
+                            #   value and the feature class, delete the row in the
+                            #   feature class. The spreadsheet record will be
+                            #   re-geocoded and placed in the un-appended report for
+                            #   further attention.
+                            except RuntimeError:
+                                fcrows.deleteRow()
+
+                except KeyError:
+                    pass
+
+    # Clean up new data to reflect updates from current data
+    with arcpy.da.UpdateCursor(tempTable, fields) as updaterows:
+        del_count = 0
+
+        for updaterow in updaterows:
+            idVal = updaterow[id_index]
+
+            try:
+                if idVal.is_integer():
+                    idVal = int(idVal)
+            except AttributeError:
+                pass
+
+            idVal = cast_id(idVal, field_type)
+
+            try:
+                id_vals = att_dict[idVal]
+
+                try:
+                    dtVal = dt.strptime(updaterow[dt_index], timestamp)
+                    dtVal = dtVal.replace(microsecond=0)
+                except TypeError:
+                    dtVal = updaterow[dt_index]
+
+                try:
+                    dict_date = dt.strptime(id_vals[dt_field], timestamp)
+                    dict_date = dict_date.replace(microsecond=0)
+                except TypeError:
+                    dict_date = id_vals[dt_field]
+
+                if not dict_date == dtVal:
+                    updaterows.deleteRow()
+                    del_count += 1
+
+            except KeyError:
+                # Delete incidents removed from the dictionary
+                updaterows.deleteRow()
+                del_count += 1
+
+    # Return the records to geocode
+
+    return tempTable, null_records, update_count, del_count - update_count
 
 # End remove_dups function
 
@@ -553,15 +827,20 @@ def main(config_file, *args):
             username = cfg.get('SERVICE', 'username')
             password = cfg.get('SERVICE', 'password')
 
-            timeNow = dt.strftime(dt.now(), time_format)
-            portal = GIS(portalURL, username, password)
-            messages(m0.format(timeNow, str(portal.properties.user.username)), log)
+            target_feat_type = "FC"
+            if portalURL and username and password:
+                target_feat_type = "service"
 
-            fl = FeatureLayer(url=inc_features,gis=portal)
+            if target_feat_type == "service":
                 
+                timeNow = dt.strftime(dt.now(), time_format)
+                portal = GIS(portalURL, username, password)
+                messages(m0.format(timeNow, str(portal.properties.user.username)), log)
 
-            if not fl.properties.geometryType == 'esriGeometryPoint':
-                raise Exception(e6.format(inc_features))
+                fl = FeatureLayer(url=inc_features,gis=portal)
+                    
+                if not fl.properties.geometryType == 'esriGeometryPoint':
+                    raise Exception(e6.format(inc_features))
 
             timeNow = dt.strftime(dt.now(), time_format)
             
@@ -581,10 +860,10 @@ def main(config_file, *args):
                 incidents = arcpy.TableToTable_conversion(incidents, tempgdb, "schemaTable",field_mapping=afm)
 
             # Identify field names in both fc and csv
-            csvfieldnames = [f.name for f in arcpy.ListFields(incidents)]
-            incfieldnames = [f['name'] for f in fl.properties.fields]
+            sourcefieldnames = [f.name for f in arcpy.ListFields(incidents)]
+            targetfieldnames = [f.name for f in arcpy.ListFields(inc_features)]
 
-            matchfieldnames = [fieldname for fieldname in csvfieldnames if fieldname in incfieldnames]
+            matchfieldnames = [fieldname for fieldname in sourcefieldnames if fieldname in targetfieldnames]
             
             #Dont compare objectid values because they will likely be different and will cause updates
             # to be sent to service when its not necessary
@@ -633,12 +912,12 @@ def main(config_file, *args):
                 opFields = [summary_field, report_date_field]
 
             # Validate required field names
-            field_test(incidents, reqFields, csvfieldnames, True)
-            field_test(inc_features, reqFields, incfieldnames, True)
+            field_test(incidents, reqFields, sourcefieldnames, True)
+            field_test(inc_features, reqFields, targetfieldnames, True)
 
             # Validate optional field names
-            field_test(incidents, opFields, csvfieldnames)
-            field_test(inc_features, opFields, incfieldnames)
+            field_test(incidents, opFields, sourcefieldnames)
+            field_test(inc_features, opFields, targetfieldnames)
 
             # Get address fields for geocoding
             if loc_type == "ADDRESSES":
@@ -708,14 +987,22 @@ def main(config_file, *args):
                 timeNow = dt.strftime(dt.now(), time_format)
                 messages(m13.format(timeNow), log)
 
-                incidents, req_nulls, countUpdate, countDelete = remove_dups(tempgdb,
-                                                                                incidents,
-                                                                                fl,
-                                                                                matchfieldnames,
-                                                                                id_field,
-                                                                                report_date_field,
-                                                                                loc_fields,
-                                                                                timestamp)
+                if target_feat_type == "service":
+                    incidents, req_nulls, countUpdate, countDelete = remove_dups_fs(incidents,
+                                                                                    fl,
+                                                                                    matchfieldnames,
+                                                                                    id_field,
+                                                                                    report_date_field,
+                                                                                    loc_fields,
+                                                                                    timestamp)
+                else:
+                    incidents, req_nulls, countUpdate, countDelete = remove_dups_fc(incidents,
+                                                                                    inc_features,
+                                                                                    matchfieldnames,
+                                                                                    id_field,
+                                                                                    report_date_field,
+                                                                                    loc_fields,
+                                                                                    timestamp)
 
                 if not req_nulls == "":
                     req_nulls = "{}\n".format(req_nulls)
@@ -828,58 +1115,141 @@ def main(config_file, *args):
                     errorfieldnames.extend(matchfieldnames)
                     errorfieldnames.insert(0, errorfield)
                     errorfieldnames += [long_field, lat_field]
-                            
-                    # Reproject the features
-                    sr_output = fl.properties.extent['spatialReference']['wkid']
-                    proj_out = "{}_proj".format(tempFC)
-                    arcpy.Project_management(tempFC, proj_out, sr_output)
 
-                    #Collect all the date fields that will be updated
-                    dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
+                    if target_feat_type == "service":
+                        # Reproject the features
+                        sr_output = fl.properties.extent['spatialReference']['wkid']
+                        proj_out = "{}_proj".format(tempFC)
+                        arcpy.Project_management(tempFC, proj_out, sr_output)
+                        #Collect all the date fields that will be updated
+                        dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
 
-                    #Convert to Feature Set
-                    fs = arcpy.FeatureSet()
-                    fs.load(proj_out)
-                    
-                    features = json.loads(fs.JSON)["features"]
+                        #Convert to Feature Set
+                        fs = arcpy.FeatureSet()
+                        fs.load(proj_out)
+                        
+                        features = json.loads(fs.JSON)["features"]
 
-                    #Remove 'USER_' added from geocoding from field names in each individual feature to be appended to feature service
-                    if loc_type == "ADDRESSES":
+                        #Remove 'USER_' added from geocoding from field names in each individual feature to be appended to feature service
+                        if loc_type == "ADDRESSES":
+                            for feature in features:
+                                for attribute in feature['attributes']:
+                                        if attribute[:5] == "USER_":
+                                            if attribute.replace("USER_", "") in matchfieldnames:
+                                                feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
+
+                        #Remove non matching fields from features to reduce payload being sent in 'edit_features' (adding new features) call
+                        for feature in features:                
+                            for attribute in list(feature['attributes']):
+                                if attribute not in matchfieldnames:
+                                    del feature['attributes'][attribute]
+                                    
+
+                        #Create ArcGIS Python API Features List
+                        fset = []
                         for feature in features:
-                            for attribute in feature['attributes']:
-                                    if attribute[:5] == "USER_":
-                                        if attribute.replace("USER_", "") in matchfieldnames:
-                                            feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
+                            tempFeature = Feature(feature['geometry'], feature['attributes'])
+                            fset.append(tempFeature)
 
-                    #Remove non matching fields from features to reduce payload being sent in 'edit_features' (adding new features) call
-                    for feature in features:                
-                        for attribute in list(feature['attributes']):
-                            if attribute not in matchfieldnames:
-                                del feature['attributes'][attribute]
-                                
+                        #Convert all date values to UTC for records to add
+                        for feature in fset:
+                            for dateField in dateFields:
+                                if isinstance(feature.get_value(dateField), int):
+                                    dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                                else:
+                                    dateValue = dt.strptime(feature.get_value(dateField), timestamp)
+                                dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                                feature.set_value(dateField, dateValue)
+                        
+                        arcpy.ResetProgressor()
+                        arcpy.SetProgressor("default", "Appending features to target features" )
 
-                    #Create ArcGIS Python API Features List
-                    fset = []
-                    for feature in features:
-                        tempFeature = Feature(feature['geometry'], feature['attributes'])
-                        fset.append(tempFeature)
+                        #Send new features to service in batches of 100
+                        editFeatures(fset, fl, "add")
+                    else:
+                        # Reproject the features
+                        sr_input = arcpy.Describe(tempFC).spatialReference
+                        sr_output = arcpy.Describe(inc_features).spatialReference
 
-                    #Convert all date values to UTC for records to add
-                    for feature in fset:
-                        for dateField in dateFields:
-                            if isinstance(feature.get_value(dateField), int):
-                                dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
-                            else:
-                                dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                            dateValue = int(str(dateValue.timestamp()*1000)[:13])
-                            feature.set_value(dateField, dateValue)
-                    
-                    arcpy.ResetProgressor()
-                    arcpy.SetProgressor("default", "Appending features to target features" )
+                        if sr_input != sr_output:
+                            proj_out = "{}_proj".format(tempFC)
 
-                    #Send new features to service in batches of 100
-                    editFeatures(fset, fl, "add")
+                            arcpy.Project_management(tempFC,
+                                                    proj_out,
+                                                    sr_output)
+                            tempFC = proj_out
 
+                        # Append geocode results to fc
+                        rptNoAppend = join(reports, "{0}_{1}.csv".format(fileNow, noappend_name))
+
+                        with arcpy.da.SearchCursor(tempFC, copyfieldnames) as csvrows:
+                            with arcpy.da.InsertCursor(inc_features, copyfieldnames) as incrows:
+                                # Open csv for un-appended records
+                                with open(rptNoAppend, "w") as appendFile:
+
+                                    appendwriter = csv.writer(appendFile)
+                                    appendwriter.writerow(errorfieldnames)
+
+                                    # Index of field with incident ID
+                                    record = errorfieldnames.index(id_field)
+
+                                    # Initiate count of successfully appended records
+                                    countAppend = 0
+
+                                    # List of ids of records not successfully appended
+                                    errorRecords = []
+
+                                    for csvrow in csvrows:
+                                        try:
+                                            if loc_type == "COORDINATES":
+                                                if remove_zeros:
+                                                    lt_index = copyfieldnames.index(lt_field)
+                                                    lg_index = copyfieldnames.index(lg_field)
+
+                                                    ltVal = csvrow[lt_index]
+                                                    lgVal = csvrow[lg_index]
+
+                                                    if ltVal == 0 and lgVal == 0:
+                                                        raise Exception("invalid_coordinates")
+
+                                            # If the row can be appended
+                                            incrows.insertRow(csvrow)
+                                            countAppend += 1
+
+                                        except Exception as reason:
+                                            # e.g. 'The value type is incompatible with the
+                                            #       field type. [INCIDENTDAT]'
+                                            # Alternatively, the exception
+                                            #      'invalid_coordinates' raised by the
+                                            #       remove_zeros test above
+
+                                            # Get the name of the problem field
+                                            badfield = reason[0].split(" ")[-1]
+                                            badfield = badfield.strip(" []")
+
+                                            # Append field name to start of record
+                                            csvrow = list(csvrow)
+                                            csvrow.insert(0, badfield)
+
+                                            # Split the coordinate tuple into X and Y
+                                            lng, lat = list(csvrow[-1])
+                                            csvrow[-1] = lng
+                                            csvrow.append(lat)
+                                            csvrow = tuple(csvrow)
+
+                                            # Write the record out to csv
+                                            appendwriter.writerow(csvrow)
+
+                                            # Add id and field to issue list
+                                            errorRecords.append(w4.format(csvrow[record], badfield))
+
+                        # If issues were reported, print them
+                        if len(errorRecords) != 0:
+                            messages(w1.format(len(errorRecords), inc_features, rptNoAppend), log, 1)
+
+                        messages(m18.format(countAppend, inc_features), log)
+
+                        del incrows, csvrows
 
         except arcpy.ExecuteError:
             print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
