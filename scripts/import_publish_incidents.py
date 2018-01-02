@@ -23,6 +23,7 @@ import arcpy
 import csv
 import getpass
 import configparser
+import sys, traceback
 from os import rename, walk
 
 # Locator input fields
@@ -1154,12 +1155,13 @@ def main(config_file, *args):
                         #Convert all date values to UTC for records to add
                         for feature in fset:
                             for dateField in dateFields:
-                                if isinstance(feature.get_value(dateField), int):
-                                    dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
-                                else:
-                                    dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                                dateValue = int(str(dateValue.timestamp()*1000)[:13])
-                                feature.set_value(dateField, dateValue)
+                                if feature.get_value(dateField):
+                                    if isinstance(feature.get_value(dateField), int):
+                                        dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                                    else:
+                                        dateValue = dt.strptime(feature.get_value(dateField), timestamp)
+                                    dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                                    feature.set_value(dateField, dateValue)
                         
                         arcpy.ResetProgressor()
                         arcpy.SetProgressor("default", "Appending features to target features" )
@@ -1267,15 +1269,20 @@ def main(config_file, *args):
                     print("Code: {}".format(code))
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
-        except Exception as ex:
-            print("{}: {}\n".format(py_error, ex))
+        except:
+            tb = sys.exc_info()[2]
+            tbinfo = traceback.format_tb(tb)[0]
+
+            py_error = "PYTHON ERRORS:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
+
+            #print("{}: {}\n".format(py_error, ex))
             timeNow = dt.strftime(dt.now(), "{}".format(time_format))
 
             arcpy.AddError("{} {}:\n".format(timeNow, py_error))
-            arcpy.AddError("{}\n".format(ex))
+            #arcpy.AddError("{}\n".format(ex))
 
             log.write("{} {}:\n".format(timeNow, py_error))
-            log.write("{}\n".format(ex))
+            #log.write("{}\n".format(ex))
 
         finally:
              #Clean up
