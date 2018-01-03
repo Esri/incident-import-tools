@@ -80,7 +80,7 @@ e2 = "Field u'{}' does not exist in {}.\nValid fields are {}.{}"
 ##e3 = "Provide a valid ArcMap document to publish a service."
 ##e4 = "SD draft analysis errors:\n{}"
 e6 = "Feature service {} must store features with point geomentry."
-##e8 = "Provide a user name and password with Publisher or Administrative privileges."
+e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
 e13 = "Provide a locator to geocode addresses. A locator service, local locator, or the World Geocode Service are all acceptable."
 e14 = "The locator values provided at the top of the import_publish_incidents.py script for 'loc_address_field', 'loc_city_field', 'loc_zip_field', and 'loc_state_field' must also be included in the list 'all_locator_fields'."
 e15 = "Field {} in spreadsheet {} contains a non-date value, or a value in a format other than {}."
@@ -501,8 +501,7 @@ def compare_locations_fc(fields, fcrow, id_vals, loc_fields):
             if not str(id_vals[loc_field]).upper() == str(fcrow[loc_index]).upper():
                 status = True
                 break
-    if status:
-        arcpy.AddMessage(str(id_vals[loc_field]).upper() + " " + str(fcrow[loc_index]).upper())
+
     return status
 
 # End compare_locs_fc function
@@ -835,7 +834,11 @@ def main(config_file, *args):
             if target_feat_type == "service":
                 
                 timeNow = dt.strftime(dt.now(), time_format)
-                portal = GIS(portalURL, username, password)
+                try:
+                    portal = GIS(portalURL, username, password)
+                except RunTimeError:
+                    raise Exception(e8)
+
                 messages(m0.format(timeNow, str(portal.properties.user.username)), log)
 
                 fl = FeatureLayer(url=inc_features,gis=portal)
@@ -1086,7 +1089,6 @@ def main(config_file, *args):
 
                 else:
                     # Create temporary output storage
-
                     tempFL = arcpy.MakeXYEventLayer_management(incidents,
                                                                 lg_field,
                                                                 lt_field,
@@ -1266,6 +1268,9 @@ def main(config_file, *args):
             for msg in range(0, arcpy.GetMessageCount()):
                 if arcpy.GetSeverity(msg) == 2:
                     code = arcpy.GetReturnCode(msg)
+                    if code == 55:
+                        arcpy.AddError("Verify that Latitude and Longitude Fields are formatted without commas or spaces")
+                        log.write("Verify that Latitude and Longitude Fields are formatted without commas or spaces")
                     print("Code: {}".format(code))
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
@@ -1273,7 +1278,7 @@ def main(config_file, *args):
             tb = sys.exc_info()[2]
             tbinfo = traceback.format_tb(tb)[0]
 
-            py_error = "PYTHON ERRORS:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
+            py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
 
             #print("{}: {}\n".format(py_error, ex))
             timeNow = dt.strftime(dt.now(), "{}".format(time_format))

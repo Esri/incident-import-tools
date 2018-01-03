@@ -8,6 +8,7 @@
 
 from os.path import dirname, join, realpath
 import arcpy
+from arcgis.gis import GIS
 from collections import OrderedDict
 import configparser
 
@@ -68,6 +69,15 @@ def main(config_file,
     GP tool UI and writes them out to a
     configuration file
     """
+    e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
+
+    if portal_url:
+        if "https://" or "http://" not in portal_url[0:8]:
+            portal_url = "https://" + portal_url
+        try:
+            GIS(portal_url, "rcosbyEsri", "rcosesritester93")
+        except RuntimeError:
+            raise Exception(e8)
 
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
@@ -143,11 +153,11 @@ def main(config_file,
     write_config(p_dict, config, section)
 
     # Save configuration to file
-    cfgpath = dirname(realpath(__file__))
-    cfgfile = join(cfgpath, "{}.cfg".format(config_file))
+    #cfgpath = dirname(realpath(__file__))
+    #cfgfile = join(cfgpath, "{}.cfg".format(config_file))
 
-    with open(cfgfile, "w") as cfg:
-        arcpy.AddMessage('Saving configuration "{}"...'.format(cfgfile))
+    with open(config_file, "w") as cfg:
+        arcpy.AddMessage('Saving configuration "{}"...'.format(config_file))
         config.write(cfg)
 
     arcpy.AddMessage('Done.')
