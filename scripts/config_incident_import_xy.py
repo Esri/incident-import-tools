@@ -7,6 +7,7 @@
 ----------------------------------------------------------------------------"""
 
 from os.path import dirname, join, realpath
+import sys
 import arcpy
 from arcgis.gis import GIS
 from collections import OrderedDict
@@ -72,12 +73,15 @@ def main(config_file,
     e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
 
     if portal_url:
-        if "https://" or "http://" not in portal_url[0:8]:
+        if "https://" not in portal_url[0:8] and "http://" not in portal_url[0:7]:
             portal_url = "https://" + portal_url
         try:
+            arcpy.AddMessage("Verifying Login Credentials to: \n" + str(portal_url))
             GIS(portal_url, username, password)
-        except RuntimeError:
-            raise Exception(e8)
+        except:
+            arcpy.AddError("{}\n".format(e8))
+            sys.exit(1)
+        arcpy.AddMessage("Login Credentials Verified")
 
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
