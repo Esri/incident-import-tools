@@ -77,7 +77,7 @@ def main(config_file,
         if "https://" or "http://" not in portal_url[0:8]:
             portal_url = "https://" + portal_url
         try:
-            GIS(portal_url, "rcosbyEsri", "rcosesritester93")
+            GIS(portal_url, username, password)
         except RuntimeError:
             raise Exception(e8)
 
