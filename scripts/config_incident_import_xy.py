@@ -70,6 +70,8 @@ def main(config_file,
     GP tool UI and writes them out to a
     configuration file
     """
+    arcpy.env.overwriteOutput = True
+
     e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
 
     if portal_url:
@@ -163,6 +165,8 @@ def main(config_file,
     with open(config_file, "w") as cfg:
         arcpy.AddMessage('Saving configuration "{}"...'.format(config_file))
         config.write(cfg)
+    
+    cfg.close()
 
     arcpy.AddMessage('Done.')
 

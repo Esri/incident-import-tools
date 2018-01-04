@@ -178,7 +178,7 @@ def main(config_file,
     with open(config_file, "w") as cfg:
         arcpy.AddMessage('Saving configuration "{}"...'.format(config_file))
         config.write(cfg)
-
+    cfg.close()
     arcpy.AddMessage('Done.')
 
 if __name__ == '__main__':

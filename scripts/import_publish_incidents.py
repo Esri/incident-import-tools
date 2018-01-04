@@ -1106,7 +1106,7 @@ def main(config_file, *args):
                     timeNow = dt.strftime(dt.now(), time_format)
                     messages(m4.format(timeNow, records_to_add ,inc_features), log)
 
-                    arcpy.SetProgressor("default", "Preparing features to be sent to service")
+                    arcpy.SetProgressor("default", "Preparing features to be sent to Target")
 
                     # Fields that will be copied from geocode results to final fc
                     copyfieldnames = []
@@ -1186,7 +1186,14 @@ def main(config_file, *args):
                         # Append geocode results to fc
                         rptNoAppend = join(reports, "{0}_{1}.csv".format(fileNow, noappend_name))
 
-                        with arcpy.da.SearchCursor(tempFC, copyfieldnames) as csvrows:
+                        if loc_type == "ADDRESSES":
+                            geocodefieldnames = ["USER_" + fieldname for fieldname in copyfieldnames[:-1]]
+                            geocodefieldnames.append("SHAPE@XY")
+                            searchnames = geocodefieldnames
+                        else:
+                            searchnames = copyfieldnames                                           
+
+                        with arcpy.da.SearchCursor(tempFC, searchnames) as csvrows:
                             with arcpy.da.InsertCursor(inc_features, copyfieldnames) as incrows:
                                 # Open csv for un-appended records
                                 with open(rptNoAppend, "w") as appendFile:
