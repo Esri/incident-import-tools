@@ -240,6 +240,7 @@ def processFieldMap(fieldmapstring):
 
 def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fields):
     # Create temporary table of the new data
+    del_count = 0
     tempTable = arcpy.CopyRows_management(new_features, join('in_memory','tempTableLE'))
     tableidFieldType = arcpy.ListFields(tempTable, id_field)[0].type
 
@@ -285,7 +286,7 @@ def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fie
                             dup_rows.delete(dup_row)
                             del_count += 1
     
-    return tempTable, tableidFieldType, dt_index, all_ids, null_records
+    return tempTable, tableidFieldType, dt_index, all_ids, null_records, del_count
 
 def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_fields, timestamp):
     """Compares records with matching ids and determines which is more recent.
@@ -297,9 +298,7 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
             If the locations are the same the existing record attributes
                 are updated"""
     update_count = 0
-    del_count = 0
-
-    tempTable, tableidFieldType, dt_index, all_ids, null_records = _prep_source_table(new_features, fields, id_field, dt_field, loc_fields)
+    tempTable, tableidFieldType, dt_index, all_ids, null_records, del_count = _prep_source_table(new_features, fields, id_field, dt_field, loc_fields)
     
     # service field types
     service_field_types = {}
@@ -384,14 +383,15 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                             fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
 
                                     elif 'Date' in service_field_types[fields[i]]:
-                                        try:
-                                            #DateString -> Datetime -> UNIX timestamp integer
-                                            fvals['ValueToSet'] = int(str(dt.strptime(csvdup[i],timestamp).timestamp()*1000)[:13])
-                                        except TypeError:
-                                            #Create a unix timestamp integer in UTC time to send to service
-                                            fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
-                                        except AttributeError:
-                                            fvals['ValueToSet'] = csvdup[i]
+                                        if csvdup[i]:
+                                            try:
+                                                #DateString -> Datetime -> UNIX timestamp integer
+                                                fvals['ValueToSet'] = int(str(dt.strptime(csvdup[i],timestamp).timestamp()*1000)[:13])
+                                            except TypeError:
+                                                #Create a unix timestamp integer in UTC time to send to service
+                                                fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
+                                        else:
+                                                fvals['ValueToSet'] = csvdup[i]
                                     else:
                                         # If a source table value is a whole number float such as 2013.0 and the target stores
                                         # that number as 2013 either as a string or a integer. Convert it to an integer here
@@ -1285,19 +1285,27 @@ def main(config_file, *args):
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
         except:
-            tb = sys.exc_info()[2]
-            tbinfo = traceback.format_tb(tb)[0]
+            #tb = sys.exc_info()[2]
+            #tbinfo = traceback.format_tb(tb)[0]
 
-            py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
+            #py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
 
             #print("{}: {}\n".format(py_error, ex))
+            #timeNow = dt.strftime(dt.now(), "{}".format(time_format))
+
+            #arcpy.AddError("{} {}:\n".format(timeNow, py_error))
+            #arcpy.AddError("{}\n".format(ex))
+
+            #log.write("{} {}:\n".format(timeNow, py_error))
+            #log.write("{}\n".format(ex))
+            print("{}: {}\n".format(py_error, ex))
             timeNow = dt.strftime(dt.now(), "{}".format(time_format))
 
             arcpy.AddError("{} {}:\n".format(timeNow, py_error))
-            #arcpy.AddError("{}\n".format(ex))
+            arcpy.AddError("{}\n".format(ex))
 
             log.write("{} {}:\n".format(timeNow, py_error))
-            #log.write("{}\n".format(ex))
+            log.write("{}\n".format(ex))
 
         finally:
              #Clean up
