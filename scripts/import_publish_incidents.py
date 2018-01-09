@@ -382,6 +382,7 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                                 fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
                                         except (TypeError, ValueError):
                                             fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
+
                                     elif 'Date' in service_field_types[fields[i]]:
                                         try:
                                             #DateString -> Datetime -> UNIX timestamp integer
@@ -389,6 +390,8 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                         except TypeError:
                                             #Create a unix timestamp integer in UTC time to send to service
                                             fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
+                                        except AttributeError:
+                                            fvals['ValueToSet'] = csvdup[i]
                                     else:
                                         # If a source table value is a whole number float such as 2013.0 and the target stores
                                         # that number as 2013 either as a string or a integer. Convert it to an integer here
@@ -703,7 +706,7 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
 
 # End remove_dups function
 
-def editFeatures(features: [Feature], fl: FeatureLayer, mode: str):
+def editFeatures(features, fl, mode):
     retval = False
     error = False
     # add section
