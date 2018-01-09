@@ -287,7 +287,7 @@ def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fie
     
     return tempTable, tableidFieldType, dt_index, all_ids, null_records
 
-def remove_dups_fs(new_features, cur_features: FeatureLayer, fields, id_field, dt_field, loc_fields, timestamp):
+def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_fields, timestamp):
     """Compares records with matching ids and determines which is more recent.
         If the new record is older than the existing record, no updates
         If the new record has the same or a more recent date, the locations
