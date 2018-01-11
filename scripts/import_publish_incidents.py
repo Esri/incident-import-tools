@@ -1124,7 +1124,10 @@ def main(config_file, *args):
 
                     if target_feat_type == "service":
                         # Reproject the features
-                        sr_output = fl.properties.extent['spatialReference']['wkid']
+                        try:
+                            sr_output = fl.properties.extent['spatialReference']['wkid']
+                        except KeyError:
+                            sr_output = fl.properties.extent['spatialReference']['wkt']
                         proj_out = "{}_proj".format(tempFC)
                         arcpy.Project_management(tempFC, proj_out, sr_output)
                         #Collect all the date fields that will be updated
@@ -1284,7 +1287,7 @@ def main(config_file, *args):
                     print("Code: {}".format(code))
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
-        except:
+        except Exception as ex:
             #tb = sys.exc_info()[2]
             #tbinfo = traceback.format_tb(tb)[0]
 
