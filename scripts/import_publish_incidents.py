@@ -874,8 +874,9 @@ def main(config_file, *args):
             
             #Dont compare objectid values because they will likely be different and will cause updates
             # to be sent to service when its not necessary
-            if 'OBJECTID' in matchfieldnames:
-                matchfieldnames.remove('OBJECTID') 
+            oidFieldName = arcpy.Describe(inc_features).oidFieldName
+            if oidFieldName in matchfieldnames:
+                matchfieldnames.remove(oidFieldName)
 
             # If data is to be geocoded
             if loc_type == "ADDRESSES":
