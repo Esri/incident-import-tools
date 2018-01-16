@@ -197,8 +197,15 @@ def compare_locations_fs(fields, servicerow, tablerow, loc_fields):
 
             serv_str = str(servicerow.get_value(loc_field)).upper().replace(',','')
 
+            try:
+                if servicerow.get_value(loc_field).is_integer():
+                    serv_str = str(int(servicerow.get_value(loc_field)))
+            except AttributeError:
+                pass
+
             if not table_str == serv_str:
                 status = True
+                arcpy.AddMessage(table_str + " " + serv_str)
                 break
 
     return status
@@ -408,7 +415,14 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                 #Check to see if any attributes are different between target service and source table
                                 updateNeeded = False
                                 for fld in field_info:
-                                    if str(servicerow.get_value(fld["FieldName"])) != str(fld['ValueToSet']):
+                                    serv_str = str(servicerow.get_value(fld["FieldName"]))
+                                    #If the service value is a whole number with ".0" at the end ignore ".0"                                      
+                                    try:
+                                        if servicerow.get_value(fld["FieldName"]).is_integer():
+                                            serv_str = str(int(servicerow.get_value(fld["FieldName"])))
+                                    except AttributeError:
+                                        pass
+                                    if serv_str != str(fld['ValueToSet']):
                                         updateNeeded = True
                                 
                                 #At least one attribute change detected so send new attributes to service
