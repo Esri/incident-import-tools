@@ -1190,7 +1190,7 @@ def main(config_file, *args):
                             if len(doubleFields) > 0:
                                 for doubleField in doubleFields:
                                     if feature.get_value(doubleField):
-                                        value = None
+                                        value = feature.get_value(doubleField)
                                         try:
                                             if feature.get_value(doubleField).is_integer():
                                                 value = int(feature.get_value(doubleField))
