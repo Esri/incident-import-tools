@@ -87,9 +87,9 @@ e15 = "Field {} in spreadsheet {} contains a non-date value, or a value in a for
 e16 = "Report date field required to identify duplicate records."
 
 # Warning messages
-##w1 = "*** {} records could not be appended to {}.\nThese records have been copied to {}.\n\n"
+w1 = "*** {} records could not be appended to {}.\nThese records have been copied to {}.\n\n"
 w3 = "The following records contain null values in required fields and were not processed:\n{}"
-##w4 = "{} (problem field: {})"
+w4 = "{} (problem field: {})"
 w5 = "\nTip: Many values are set in the script configuration file.\n"
 w6 = "*** {} records were not successfully geocoded.\nThese records have been copied to {}.\n\n"
 w7 = "*** {} records were not geocoded to an acceptable level of accuracy: {}\nThese records have been copied to {}.\n\n"
@@ -1137,7 +1137,59 @@ def main(config_file, *args):
                     errorfieldnames.insert(0, errorfield)
                     errorfieldnames += [long_field, lat_field]
 
+
+
+
                     if target_feat_type == "service":
+                        
+                        rptNoAppend = join(reports, "{0}_{1}.csv".format(fileNow, noappend_name))
+                        if loc_type == "COORDINATES":
+                            if remove_zeros:
+                                with arcpy.da.UpdateCursor(tempFC, copyfieldnames) as appendRows:
+                                    with open(rptNoAppend, "w") as appendFile:
+
+                                        appendwriter = csv.writer(appendFile)
+                                        appendwriter.writerow(errorfieldnames)
+                                        countAppend = 0
+
+                                        # Index of field with incident ID
+                                        record = errorfieldnames.index(id_field)
+
+                                        errorRecords = []
+
+                                        for appendrow in appendRows:
+                                            lt_index = copyfieldnames.index(lt_field)
+                                            lg_index = copyfieldnames.index(lg_field)
+
+                                            ltVal = appendrow[lt_index]
+                                            lgVal = appendrow[lg_index]
+                                            if ltVal == 0 and lgVal == 0:
+                                                errorrow = list(appendrow)
+                                                errorrow.insert(0, "Coordinates")
+
+                                                # Split the coordinate tuple into X and Y
+                                                lng, lat = list(errorrow[-1])
+                                                errorrow[-1] = lng
+                                                errorrow.append(lat)
+                                                errorrow = tuple(errorrow)
+
+
+                                                # Write the record out to csv
+                                                appendwriter.writerow(errorrow)
+                                                
+                                                # Add id and field to issue list
+                                                errorRecords.append(w4.format(errorrow[record], "Coordinates"))
+                                                appendRows.deleteRow()
+                                            else:
+                                                countAppend += 1
+                                        
+
+                                # If issues were reported, print them
+                                if len(errorRecords) != 0:
+                                    messages(w1.format(len(errorRecords), inc_features, rptNoAppend), log, 1)
+
+                                messages(m18.format(countAppend, inc_features), log)
+                                        
                         # Reproject the features
                         try:
                             sr_output = fl.properties.extent['spatialReference']['wkid']
