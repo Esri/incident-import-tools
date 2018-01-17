@@ -205,7 +205,6 @@ def compare_locations_fs(fields, servicerow, tablerow, loc_fields):
 
             if not table_str == serv_str:
                 status = True
-                arcpy.AddMessage(table_str + " " + serv_str)
                 break
 
     return status
@@ -295,7 +294,7 @@ def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fie
     
     return tempTable, tableidFieldType, dt_index, all_ids, null_records, del_count
 
-def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_fields, timestamp):
+def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_fields, timestamp, log):
     """Compares records with matching ids and determines which is more recent.
         If the new record is older than the existing record, no updates
         If the new record has the same or a more recent date, the locations
@@ -443,7 +442,7 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                 del_where = """{} = {}""".format(id_field, idVal)
                                 cur_features.delete_features(where=del_where)
         # Sends updated features to service in batches of 100
-        editFeatures(updateFeatures,cur_features,"update")
+        editFeatures(updateFeatures,cur_features,"update", log)
 
     ##                    break
 
@@ -720,7 +719,7 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
 
 # End remove_dups function
 
-def editFeatures(features, fl, mode):
+def editFeatures(features, fl, mode, log):
     retval = False
     error = False
     # add section
@@ -749,9 +748,9 @@ def editFeatures(features, fl, mode):
             else:
                 result = fl.edit_features(updates=featuresChunk)
             try:
-                if result['error'] != None:
+                if result['addResults'][-1]['error'] != None:
                     retval = False
-                    arcpy.AddMessage("Send edited features to Service failed")
+                    messages("Sending new features to service failed\n{}\n".format(result['addResults'][-1]['error']['description']),log,2)
                     error = True
             except:
                 try:
@@ -1016,7 +1015,8 @@ def main(config_file, *args):
                                                                                     id_field,
                                                                                     report_date_field,
                                                                                     loc_fields,
-                                                                                    timestamp)
+                                                                                    timestamp,
+                                                                                    log)
                 else:
                     incidents, req_nulls, countUpdate, countDelete = remove_dups_fc(incidents,
                                                                                     inc_features,
@@ -1147,6 +1147,7 @@ def main(config_file, *args):
                         arcpy.Project_management(tempFC, proj_out, sr_output)
                         #Collect all the date fields that will be updated
                         dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
+                        doubleFields = [field['name'] for field in fl.properties.fields if 'Double' in field['type'] and field['name'] in matchfieldnames]
 
                         #Convert to Feature Set
                         fs = arcpy.FeatureSet()
@@ -1157,7 +1158,7 @@ def main(config_file, *args):
                         #Remove 'USER_' added from geocoding from field names in each individual feature to be appended to feature service
                         if loc_type == "ADDRESSES":
                             for feature in features:
-                                for attribute in feature['attributes']:
+                                for attribute in feature['attributes']: 
                                         if attribute[:5] == "USER_":
                                             if attribute.replace("USER_", "") in matchfieldnames:
                                                 feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
@@ -1185,12 +1186,24 @@ def main(config_file, *args):
                                         dateValue = dt.strptime(feature.get_value(dateField), timestamp)
                                     dateValue = int(str(dateValue.timestamp()*1000)[:13])
                                     feature.set_value(dateField, dateValue)
+                            #Format Doubles or Floats Correctly
+                            if len(doubleFields) > 0:
+                                for doubleField in doubleFields:
+                                    if feature.get_value(doubleField):
+                                        value = None
+                                        try:
+                                            if feature.get_value(doubleField).is_integer():
+                                                value = int(feature.get_value(doubleField))
+                                        except AttributeError:
+                                            value = float(str(feature.get_value(doubleField)).replace(',',''))
+                                        feature.set_value(doubleField, value)
+
                         
                         arcpy.ResetProgressor()
                         arcpy.SetProgressor("default", "Appending features to target features" )
 
                         #Send new features to service in batches of 100
-                        editFeatures(fset, fl, "add")
+                        editFeatures(fset, fl, "add", log)
                     else:
                         # Reproject the features
                         sr_input = arcpy.Describe(tempFC).spatialReference
