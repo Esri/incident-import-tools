@@ -1173,7 +1173,6 @@ def main(config_file, *args):
                                                 errorrow.append(lat)
                                                 errorrow = tuple(errorrow)
 
-
                                                 # Write the record out to csv
                                                 appendwriter.writerow(errorrow)
                                                 
@@ -1321,8 +1320,11 @@ def main(config_file, *args):
                                             #       remove_zeros test above
 
                                             # Get the name of the problem field
-                                            badfield = reason[0].split(" ")[-1]
-                                            badfield = badfield.strip(" []")
+                                            if remove_zeros:
+                                                badfield = "Coordinates"
+                                            else:
+                                                badfield = reason[0].split(" ")[-1]
+                                                badfield = badfield.strip(" []")
 
                                             # Append field name to start of record
                                             csvrow = list(csvrow)
