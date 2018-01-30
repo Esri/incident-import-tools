@@ -1061,7 +1061,6 @@ def main(config_file, *args):
                                                         tempFC,
                                                         "STATIC")
                     
-
                     # Initiate geocoding report counts
                     countMatch = 0
                     countTrueMatch = 0
@@ -1079,7 +1078,7 @@ def main(config_file, *args):
 
                     # Write incidents that were not well geocoded to file and
                     #       delete from temp directory
-                    with open (rptUnmatch, "w") as umatchFile:
+                    with open (rptUnmatch, "w", encoding='utf8') as umatchFile:
                         unmatchwriter = csv.writer(umatchFile)
                         unmatchwriter.writerow(fieldnames)
 
@@ -1370,19 +1369,19 @@ def main(config_file, *args):
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
         except Exception as ex:
-            #tb = sys.exc_info()[2]
-            #tbinfo = traceback.format_tb(tb)[0]
+            # tb = sys.exc_info()[2]
+            # tbinfo = traceback.format_tb(tb)[0]
 
-            #py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
+            # py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
 
-            #print("{}: {}\n".format(py_error, ex))
-            #timeNow = dt.strftime(dt.now(), "{}".format(time_format))
+            # print("{}: {}\n".format(py_error, ex))
+            # timeNow = dt.strftime(dt.now(), "{}".format(time_format))
 
-            #arcpy.AddError("{} {}:\n".format(timeNow, py_error))
-            #arcpy.AddError("{}\n".format(ex))
+            # arcpy.AddError("{} {}:\n".format(timeNow, py_error))
+            # arcpy.AddError("{}\n".format(ex))
 
-            #log.write("{} {}:\n".format(timeNow, py_error))
-            #log.write("{}\n".format(ex))
+            # log.write("{} {}:\n".format(timeNow, py_error))
+            # log.write("{}\n".format(ex))
             print("{}: {}\n".format(py_error, ex))
             timeNow = dt.strftime(dt.now(), "{}".format(time_format))
 
