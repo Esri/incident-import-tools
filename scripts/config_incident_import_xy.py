@@ -13,6 +13,25 @@ from arcgis.gis import GIS
 from collections import OrderedDict
 import configparser
 
+def getFullPath(targetfeatures):
+    desc = arcpy.Describe(targetfeatures)
+    url = desc.path
+
+    if url.startswith('http'):
+        try:
+            layer_id = int(desc.name)
+        except:
+            name = desc.name[1:]
+            layer_id = ''
+            for c in name:
+                if c in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
+                    layer_id += c
+                else:
+                    break
+            layer_id = int(layer_id)
+        return url + "/{}".format(str(layer_id))
+    else:
+        return url
 
 def write_config(params, config, section):
     """
@@ -84,6 +103,8 @@ def main(config_file,
             arcpy.AddError("{}\n".format(e8))
             sys.exit(1)
         arcpy.AddMessage("Login Credentials Verified")
+    
+    target_features = getFullPath(target_features)
 
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
