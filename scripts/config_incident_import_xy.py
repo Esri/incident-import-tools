@@ -31,7 +31,7 @@ def getFullPath(targetfeatures):
             layer_id = int(layer_id)
         return url + "/{}".format(str(layer_id))
     else:
-        return url
+        return desc.catalogPath
 
 def write_config(params, config, section):
     """
