@@ -118,11 +118,12 @@ def main(config_file,
             errorCount += 1
         else:
             Yfield = fms[Yfield]["target"]
-        if summary_field not in fms:
-            arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
-            errorCount += 1
-        else:
-            summary_field = fms[summary_field]["target"]
+        if summary_field:
+            if summary_field not in fms:
+                arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
+                errorCount += 1
+            else:
+                summary_field = fms[summary_field]["target"]
         if report_date_field not in fms:
             arcpy.AddError("The target field for the Indicent Date field {} has not been specified in field map".format(report_date_field))
             errorCount += 1

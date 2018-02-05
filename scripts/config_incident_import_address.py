@@ -13,6 +13,8 @@ from collections import OrderedDict
 import configparser
 from urllib.parse import urlparse
 
+arcpy.env.addOutputsToMap = 0
+
 def getFullPath(targetfeatures):
     desc = arcpy.Describe(targetfeatures)
     url = desc.path
@@ -90,6 +92,8 @@ def main(config_file,
     GP tool UI and writes them out to a
     configuration file
     """
+    arcpy.env.addOutputsToMap = 0
+
     e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
 
     if portal_url:
@@ -132,11 +136,12 @@ def main(config_file,
         else:
             if zip_field:
                 zip_field = fms[zip_field]["target"]
-        if summary_field not in fms:
-            arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
-            errorCount += 1
-        else:
-            summary_field = fms[summary_field]["target"]
+        if summary_field:
+            if summary_field not in fms:
+                arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
+                errorCount += 1
+            else:
+                summary_field = fms[summary_field]["target"]
         if report_date_field not in fms:
             arcpy.AddError("The target field for the Indicent Date field {} has not been specified in the field map".format(report_date_field))
             errorCount += 1
