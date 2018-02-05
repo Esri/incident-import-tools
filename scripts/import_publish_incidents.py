@@ -835,10 +835,6 @@ def main(config_file, *args):
             if loc_type == "ADDRESSES":
                 log.write(l5.format(cfg.get('ADDRESSES', 'locator')))
 
-            # connect to incidents service
-            proxy_port = None
-            proxy_url = None
-
             portalURL = cfg.get('SERVICE', 'portal_url')
             username = cfg.get('SERVICE', 'username')
             password = cfg.get('SERVICE', 'password')
