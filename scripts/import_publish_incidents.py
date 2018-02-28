@@ -41,7 +41,7 @@ status = "Status"
 addr_type = "Addr_type"
 
 # Accepted levels of geolocation
-addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress"]
+addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress","Address"]
 match_value = ["M", "T"]
 
 # Feature access options for AGOL hosted service
@@ -938,30 +938,32 @@ def main(config_file, *args):
 
             # Get address fields for geocoding
             if loc_type == "ADDRESSES":
-
                 addresses = ""
-                loc_fields = []
-                adr_string = "{0} {1} VISIBLE NONE;"
+                if not city_field and not state_field and not zip_field:
+                    addresses = "'Single Line Input' {0} VISIBLE NONE".format(address_field)
+                else:
+                    loc_fields = []
+                    adr_string = "{0} {1} VISIBLE NONE;"
 
-                for loc_field in all_locator_fields:
-                    if loc_field == loc_address_field:
-                        addresses += adr_string.format(loc_field, address_field)
-                        loc_fields.append(address_field)
+                    for loc_field in all_locator_fields:
+                        if loc_field == loc_address_field:
+                            addresses += adr_string.format(loc_field, address_field)
+                            loc_fields.append(address_field)
 
-                    elif loc_field == loc_city_field and city_field != "":
-                        addresses += adr_string.format(loc_field, city_field)
-                        loc_fields.append(city_field)
+                        elif loc_field == loc_city_field and city_field != "":
+                            addresses += adr_string.format(loc_field, city_field)
+                            loc_fields.append(city_field)
 
-                    elif loc_field == loc_state_field and state_field != "":
-                        addresses += adr_string.format(loc_field, state_field)
-                        loc_fields.append(state_field)
+                        elif loc_field == loc_state_field and state_field != "":
+                            addresses += adr_string.format(loc_field, state_field)
+                            loc_fields.append(state_field)
 
-                    elif loc_field == loc_zip_field and zip_field != "":
-                        addresses += adr_string.format(loc_field, zip_field)
-                        loc_fields.append(zip_field)
+                        elif loc_field == loc_zip_field and zip_field != "":
+                            addresses += adr_string.format(loc_field, zip_field)
+                            loc_fields.append(zip_field)
 
-                    else:
-                        addresses += adr_string.format(loc_field, "<None>")
+                        else:
+                            addresses += adr_string.format(loc_field, "<None>")
 
             # Get coordinate fields
             else:
@@ -1049,7 +1051,7 @@ def main(config_file, *args):
 
                     timeNow = dt.strftime(dt.now(), time_format)
                     messages(m3.format(timeNow), log)
-
+                    
                     # Geocode the incidents
                     arcpy.GeocodeAddresses_geocoding(incidents,
                                                         locator,
