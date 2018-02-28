@@ -202,7 +202,6 @@ def compare_locations_fs(fields, servicerow, tablerow, loc_fields):
                     serv_str = str(int(servicerow.get_value(loc_field)))
             except AttributeError:
                 pass
-
             if not table_str == serv_str:
                 status = True
                 break
@@ -275,22 +274,20 @@ def _prep_source_table(new_features, matchingfields, id_field, dt_field, loc_fie
         all_ids = [idrec.split(".")[0] for idrec in all_ids]
 
     dup_ids = [id for id in list(set(all_ids)) if all_ids.count(id) > 1]
-    
+    #fieldsToReview = [dt_field] + loc_Fields
     if dup_ids:
         for dup_id in dup_ids:
             if tableidFieldType in ["Double", "Single", "Integer", "SmallInteger"]:
                 where_dup = """{} = {}""".format(id_field, dup_id)
             else:
                 where_dup = """{} = '{}'""".format(id_field, dup_id)
-            with arcpy.da.UpdateCursor(tempTable, [dt_field,loc_fields], where_dup) as dup_rows:
-                recent_date = ""
-                while len(dup_rows) > 1:
-                    for dup_row in dup_rows:
-                        if dup_row[0] > recent_date:
-                            recent_date = dup_row[0]
-                        else:
-                            dup_rows.delete(dup_row)
-                            del_count += 1
+            with arcpy.da.UpdateCursor(tempTable, [dt_field] + loc_fields, where_dup, sql_clause=[None,"ORDER BY {} DESC".format(dt_field)]) as dup_rows:
+                count = 0
+                for dup_row in dup_rows:
+                    if count > 0:
+                        dup_rows.deleteRow()
+                        del_count += 1
+                    count += 1
     
     return tempTable, tableidFieldType, dt_index, all_ids, null_records, del_count
 
@@ -305,7 +302,6 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                 are updated"""
     update_count = 0
     tempTable, tableidFieldType, dt_index, all_ids, null_records, del_count = _prep_source_table(new_features, fields, id_field, dt_field, loc_fields)
-    
     # service field types
     service_field_types = {}
     for field in cur_features.properties.fields:
@@ -365,11 +361,12 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                         loc_status = compare_locations_fs(fields, servicerow, csvdup, loc_fields)
                         # If the location has changed
                         if loc_status:
-
                             # Delete the row from the service
-                            del_where = """{} = {}""".format(id_field, idVal)
+                            if tableidFieldType in ["Double", "Single", "Integer", "SmallInteger"]:
+                                del_where = """{} = {}""".format(id_field, idVal)
+                            else:
+                                del_where = """{} = '{}'""".format(id_field, idVal)
                             cur_features.delete_features(where=del_where)
-
                         else:
                             # Same location, try to update the service attributes
                             try:
@@ -939,10 +936,11 @@ def main(config_file, *args):
             # Get address fields for geocoding
             if loc_type == "ADDRESSES":
                 addresses = ""
+                loc_fields = []
                 if not city_field and not state_field and not zip_field:
                     addresses = "'Single Line Input' {0} VISIBLE NONE".format(address_field)
+                    loc_fields.append(address_field)
                 else:
-                    loc_fields = []
                     adr_string = "{0} {1} VISIBLE NONE;"
 
                     for loc_field in all_locator_fields:
@@ -1051,7 +1049,7 @@ def main(config_file, *args):
 
                     timeNow = dt.strftime(dt.now(), time_format)
                     messages(m3.format(timeNow), log)
-                    
+
                     # Geocode the incidents
                     arcpy.GeocodeAddresses_geocoding(incidents,
                                                         locator,
@@ -1206,10 +1204,14 @@ def main(config_file, *args):
                         #Remove 'USER_' added from geocoding from field names in each individual feature to be appended to feature service
                         if loc_type == "ADDRESSES":
                             for feature in features:
-                                for attribute in feature['attributes']: 
+                                for attribute in list(feature['attributes']): 
                                         if attribute[:5] == "USER_":
                                             if attribute.replace("USER_", "") in matchfieldnames:
                                                 feature['attributes'][attribute.replace("USER_", "")] = feature['attributes'].pop(attribute)
+                                        else:
+                                            del feature['attributes'][attribute]
+
+
 
                         #Remove non matching fields from features to reduce payload being sent in 'edit_features' (adding new features) call
                         for feature in features:                
@@ -1245,7 +1247,6 @@ def main(config_file, *args):
                                         except AttributeError:
                                             value = float(str(feature.get_value(doubleField)).replace(',',''))
                                         feature.set_value(doubleField, value)
-
                         
                         arcpy.ResetProgressor()
                         arcpy.SetProgressor("default", "Appending features to target features" )
@@ -1367,19 +1368,11 @@ def main(config_file, *args):
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
         except Exception as ex:
-            # tb = sys.exc_info()[2]
-            # tbinfo = traceback.format_tb(tb)[0]
+            tb = sys.exc_info()[2]
+            tbinfo = traceback.format_tb(tb)[0]
 
-            # py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
+            py_error = "ERROR:\nTraceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
 
-            # print("{}: {}\n".format(py_error, ex))
-            # timeNow = dt.strftime(dt.now(), "{}".format(time_format))
-
-            # arcpy.AddError("{} {}:\n".format(timeNow, py_error))
-            # arcpy.AddError("{}\n".format(ex))
-
-            # log.write("{} {}:\n".format(timeNow, py_error))
-            # log.write("{}\n".format(ex))
             print("{}: {}\n".format(py_error, ex))
             timeNow = dt.strftime(dt.now(), "{}".format(time_format))
 
@@ -1388,6 +1381,14 @@ def main(config_file, *args):
 
             log.write("{} {}:\n".format(timeNow, py_error))
             log.write("{}\n".format(ex))
+            # print("{}: {}\n".format(py_error, ex))
+            # timeNow = dt.strftime(dt.now(), "{}".format(time_format))
+
+            # arcpy.AddError("{} {}:\n".format(timeNow, py_error))
+            # arcpy.AddError("{}\n".format(ex))
+
+            # log.write("{} {}:\n".format(timeNow, py_error))
+            # log.write("{}\n".format(ex))
 
         finally:
              #Clean up
