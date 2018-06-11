@@ -1,2 +1,3 @@
 *.cfg
 *.ini
+.vscode/launch.json
