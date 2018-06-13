@@ -1,10 +1,10 @@
-## Import Records
+## Record Import Tools
 
 Toolbox and scripts for importing tables into an existing feature class within a web layer or file geodatabase.  
 
 Geometry can be assigned to features using provided coordinate values in a known spatial reference system, or by geocoding an address associated with each incident.
 
-These scripts can be scheduled using Windows Task Scheduler to automatically update the feature class and service.
+These scripts can be scheduled using Task Scheduler to automatically update the feature class and service.
 
 ![Toolbox](images/Toolbox.png)
 
@@ -55,7 +55,7 @@ These scripts can be scheduled using Windows Task Scheduler to automatically upd
 
 * [ArcGIS Solutions](http://solutions.arcgis.com/)
 * [ArcGIS Blog](http://blogs.esri.com/esri/arcgis/)
-* [twitter@esri](http://twitter.com/esri)
+
 
 
 ## Issues
@@ -90,7 +90,3 @@ limitations under the License.
 
 
 A copy of the license is available in the repository's [license.txt](license.txt) file.
-
-
-[](Esri Tags: Local-Government Local Government Law Fire Incident Import)
-[](Esri Language: Python)​
