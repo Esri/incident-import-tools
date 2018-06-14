@@ -1,4 +1,4 @@
-## Record Import Tools
+# Record Import Tools
 
 Toolbox and scripts for importing tables into an existing feature class within a web layer or file geodatabase.  
 
@@ -52,35 +52,32 @@ These scripts can be scheduled using Task Scheduler to automatically update the 
 
 ## Resources
 
+Additional [information](http://solutions.arcgis.com) available for these tools.
 
-* [ArcGIS Solutions](http://solutions.arcgis.com/)
-* [ArcGIS Blog](http://blogs.esri.com/esri/arcgis/)
+Learn more about Esri's [ArcGIS for Local Government solutions](http://solutions.arcgis.com/local-government/).
 
+Show me a list of other [Local Government GitHub repositories](http://esri.github.io/#Local-Government).
 
+[New to Github? Get started here.](http://htmlpreview.github.com/?https://github.com/Esri/esri.github.com/blob/master/help/esri-getting-to-know-github.html)
 
 ## Issues
 
-
 Find a bug or want to request a new feature?  Please let us know by submitting an issue.
-
 
 ## Contributing
 
-
-Esri welcomes contributions from anyone and everyone. Please see our [guidelines for contributing](https://github.com/esri/contributing).
-
+Esri welcomes contributions from anyone and everyone.
+Please see our [guidelines for contributing](https://github.com/esri/contributing).
 
 ## Licensing
-Copyright 2013 Esri
 
+Copyright 2013 Esri
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-
    http://www.apache.org/licenses/LICENSE-2.0
-
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -88,5 +85,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+A copy of the license is available in the repository's
+[LICENSE.txt](LICENSE.txt) file.
 
-A copy of the license is available in the repository's [license.txt](license.txt) file.
