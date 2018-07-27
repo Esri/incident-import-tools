@@ -389,10 +389,10 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                         if csvdup[i]:
                                             try:
                                                 #DateString -> Datetime -> UNIX timestamp integer
-                                                fvals['ValueToSet'] = int(str(dt.strptime(csvdup[i],timestamp).timestamp()*1000)[:13])
+                                                fvals['ValueToSet'] = int(dt.strptime(csvdup[i],timestamp).timestamp()*1000)
                                             except TypeError:
                                                 #Create a unix timestamp integer in UTC time to send to service
-                                                fvals['ValueToSet'] = int(str(csvdup[i].timestamp()*1000)[:13])
+                                                fvals['ValueToSet'] = int(csvdup[i].timestamp()*1000)
                                         else:
                                                 fvals['ValueToSet'] = csvdup[i]
                                     else:
