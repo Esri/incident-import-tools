@@ -336,7 +336,7 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                     try:
                         #Bring in time stamp from service in system time
                         if 'Date' in service_field_types[dt_field]: 
-                            date2 = dt.fromtimestamp(int(str(servicerow.get_value(dt_field))[:10]))
+                            date2 = dt.fromtimestamp(int(servicerow.get_value(dt_field)/1000))
                         else:
                             date2 = dt.strptime(servicerow.get_value(dt_field),timestamp)
 
@@ -1231,10 +1231,10 @@ def main(config_file, *args):
                             for dateField in dateFields:
                                 if feature.get_value(dateField):
                                     if isinstance(feature.get_value(dateField), int):
-                                        dateValue = dt.utcfromtimestamp(int(str(feature.get_value(dateField))[:10]))
+                                        dateValue = dt.utcfromtimestamp(int(feature.get_value(dateField)/1000))
                                     else:
                                         dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                                    dateValue = int(str(dateValue.timestamp()*1000)[:13])
+                                    dateValue = int(dateValue.timestamp()*1000))
                                     feature.set_value(dateField, dateValue)
                             #Format Doubles or Floats Correctly
                             if len(doubleFields) > 0:
