@@ -1234,7 +1234,7 @@ def main(config_file, *args):
                                         dateValue = dt.utcfromtimestamp(int(feature.get_value(dateField)/1000))
                                     else:
                                         dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                                    dateValue = int(dateValue.timestamp()*1000))
+                                    dateValue = int(dateValue.timestamp()*1000)
                                     feature.set_value(dateField, dateValue)
                             #Format Doubles or Floats Correctly
                             if len(doubleFields) > 0:
