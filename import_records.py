@@ -41,7 +41,7 @@ status = "Status"
 addr_type = "Addr_type"
 
 # Accepted levels of geolocation
-addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress","Address"]
+addrOK = ["AddrPoint", "StreetAddr", "BldgName", "Place", "POI", "Intersection", "PointAddress", "StreetAddress", "SiteAddress","Address", "StreetAddressExt", "StreetInt"]
 match_value = ["M", "T"]
 
 # Feature access options for AGOL hosted service
@@ -383,7 +383,10 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                             else:
                                                 fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
                                         except (TypeError, ValueError):
-                                            fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
+                                            try:
+                                                fvals['ValueToSet'] = float(str(csvdup[i]).replace(',',''))
+                                            except:
+                                                fvals['ValueToSet'] = None
 
                                     elif 'Date' in service_field_types[fields[i]]:
                                         if csvdup[i]:
