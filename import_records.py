@@ -93,6 +93,7 @@ w4 = "{} (problem field: {})"
 w5 = "\nTip: Many values are set in the script configuration file.\n"
 w6 = "*** {} records were not successfully geocoded.\nThese records have been copied to {}.\n\n"
 w7 = "*** {} records were not geocoded to an acceptable level of accuracy: {}\nThese records have been copied to {}.\n\n"
+w8 = "*** {} Attempted to project source records to match output, but unsuccessful"
 
 # Informative messages
 m0 = "{} Logged into portal as {}...\n"
@@ -1261,13 +1262,17 @@ def main(config_file, *args):
                         sr_input = arcpy.Describe(tempFC).spatialReference
                         sr_output = arcpy.Describe(inc_features).spatialReference
 
-                        if sr_input != sr_output:
+                        if sr_input.exportToString() != sr_output.exportToString():
                             proj_out = "{}_proj".format(tempFC)
 
-                            arcpy.Project_management(tempFC,
-                                                    proj_out,
-                                                    sr_output)
-                            tempFC = proj_out
+                            try:
+                                arcpy.Project_management(tempFC,
+                                                        proj_out,
+                                                        sr_output)
+                                tempFC = proj_out
+                            except arcpy.ExecuteError:
+                                timeNow = dt.strftime(dt.now(), time_format)
+                                messages(w8.format(timeNow), log, 1)
 
                         # Append geocode results to fc
                         rptNoAppend = join(reports, "{0}_{1}.csv".format(fileNow, noappend_name))
