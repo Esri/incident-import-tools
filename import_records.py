@@ -119,7 +119,7 @@ arcpy.env.overwriteOutput = True
 def messages(msg, log, msg_type = 0):
     """Prints messages to the command line, log file, and GP tool dialog"""
     log.write(msg)
-    print(msg)
+    #print(msg)
     if msg_type == 0:
         arcpy.AddMessage(msg)
     elif msg_type == 1:
