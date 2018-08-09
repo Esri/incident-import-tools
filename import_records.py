@@ -562,7 +562,7 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
     null_records = ""
 
     # Build dictionary of most recent occurance of each incident in the spreadsheet
-    with arcpy.da.SearchCursor(tempTable, fields) as csvrows:
+    with arcpy.da.UpdateCursor(tempTable, fields) as csvrows:
 
         for csvrow in csvrows:
 
@@ -593,12 +593,16 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
                     # If it is, update the values in the dictionary
                     if status:
                         id_vals = update_dictionary_fc(fields, csvrow, id_vals)
+                    else:
+                        #If its not more recent record delete it from the source table
+                        #This means the source table has multiple records with the same ID
+                        csvrows.deleteRow()
 
                 except KeyError:
                     # If the id isn't in the dictionary, build a dictionary
                     id_vals = {}
                     id_vals = update_dictionary_fc(fields, csvrow, id_vals)
-                    att_dict[idVal] = id_vals
+                    att_dict[idVal] = id_vals 
 
     # Compare the existing features to the dictionary to find updated incidents
 
