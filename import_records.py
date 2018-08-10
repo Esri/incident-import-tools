@@ -1199,6 +1199,7 @@ def main(config_file, *args):
                             sr_output = fl.properties.extent['spatialReference']['wkt']
                         proj_out = "{}_proj".format(tempFC)
                         arcpy.Project_management(tempFC, proj_out, sr_output)
+                        
                         #Collect all the date fields that will be updated
                         dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
                         doubleFields = [field['name'] for field in fl.properties.fields if 'Double' in field['type'] and field['name'] in matchfieldnames]
@@ -1369,6 +1370,9 @@ def main(config_file, *args):
 
             log.write("{} ({}):\n".format(gp_error, timeNow))
             log.write("{}\n".format(arcpy.GetMessages(2)))
+
+            if "invalid extent for output coordinate system" in arcpy.GetMessages():
+                arcpy.AddError("The Source Table has features with coordinates that are not within the allowable extent of the Target Features coordinate system.")
 
             for msg in range(0, arcpy.GetMessageCount()):
                 if arcpy.GetSeverity(msg) == 2:
