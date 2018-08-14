@@ -14,10 +14,12 @@
 
 from os.path import dirname, join, exists, splitext, isfile, basename
 from datetime import datetime as dt
+from datetime import timedelta as td
 from time import mktime, time as t
 from calendar import timegm
 from arcgis.gis import GIS
 from arcgis.features import Feature, FeatureLayer
+import time
 import json
 import arcpy
 import csv
@@ -336,8 +338,12 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                 # Test if new record is more recent (date_status = True)
                     try:
                         #Bring in time stamp from service in system time
-                        if 'Date' in service_field_types[dt_field]: 
-                            date2 = dt.fromtimestamp(int(servicerow.get_value(dt_field)/1000))
+                        if 'Date' in service_field_types[dt_field]:
+                            serviceTime = int(servicerow.get_value(dt_field)/1000)
+                            try:
+                                date2 = dt.fromtimestamp(serviceTime)
+                            except (OverflowError, OSError):
+                                date2 = dt(1970,1,1,0) + td(seconds= serviceTime - time.altzone)
                         else:
                             date2 = dt.strptime(servicerow.get_value(dt_field),timestamp)
 
@@ -396,7 +402,13 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                                                 fvals['ValueToSet'] = int(dt.strptime(csvdup[i],timestamp).timestamp()*1000)
                                             except TypeError:
                                                 #Create a unix timestamp integer in UTC time to send to service
-                                                fvals['ValueToSet'] = int(csvdup[i].timestamp()*1000)
+                                                try:
+                                                    fvals['ValueToSet'] = int(csvdup[i].timestamp()*1000)
+                                                except (OSError, OverflowError):
+                                                    fvals['ValueToSet'] = int(((dt(1970,1,1,0) - csvdup[i]).total_seconds() - time.altzone) * -1000)
+                                            except (OSError, OverflowError):
+                                                fvals['ValueToSet'] = int(((dt(1970,1,1,0) - dt.strptime(csvdup[i],timestamp)).total_seconds() - time.altzone) * -1000)
+
                                         else:
                                                 fvals['ValueToSet'] = csvdup[i]
                                     else:
@@ -1198,8 +1210,7 @@ def main(config_file, *args):
                         except KeyError:
                             sr_output = fl.properties.extent['spatialReference']['wkt']
                         proj_out = "{}_proj".format(tempFC)
-                        arcpy.Project_management(tempFC, proj_out, sr_output)
-                        
+                        arcpy.Project_management(tempFC, proj_out, sr_output)                       
                         #Collect all the date fields that will be updated
                         dateFields = [field['name'] for field in fl.properties.fields if 'Date' in field['type'] and field['name'] in matchfieldnames]
                         doubleFields = [field['name'] for field in fl.properties.fields if 'Double' in field['type'] and field['name'] in matchfieldnames]
@@ -1240,10 +1251,17 @@ def main(config_file, *args):
                             for dateField in dateFields:
                                 if feature.get_value(dateField):
                                     if isinstance(feature.get_value(dateField), int):
-                                        dateValue = dt.utcfromtimestamp(int(feature.get_value(dateField)/1000))
+                                        fcTime = int(feature.get_value(dateField)/1000)
+                                        try:
+                                            dateValue = dt.utcfromtimestamp(fcTime)
+                                        except (OSError, OverflowError):
+                                            dateValue = dt(1970,1,1,0) + td(seconds=fcTime)
                                     else:
                                         dateValue = dt.strptime(feature.get_value(dateField), timestamp)
-                                    dateValue = int(dateValue.timestamp()*1000)
+                                    try:
+                                        dateValue = int(dateValue.timestamp()*1000)
+                                    except (OSError, OverflowError):
+                                        dateValue = int(((dt(1970,1,1,0) - dateValue).total_seconds() - time.altzone) * -1000)
                                     feature.set_value(dateField, dateValue)
                             #Format Doubles or Floats Correctly
                             if len(doubleFields) > 0:
