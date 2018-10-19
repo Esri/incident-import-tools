@@ -12,6 +12,7 @@ from arcgis.gis import GIS
 from collections import OrderedDict
 import configparser
 from urllib.parse import urlparse
+from custommessaging import Message, MsgType, printMessage, retrieveMessage, validationMessage
 
 arcpy.env.addOutputsToMap = 0
 
@@ -94,61 +95,67 @@ def main(config_file,
     """
     arcpy.env.addOutputsToMap = 0
 
-    e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
+    m1 = Message("cri_verify","Verifying Login Credentials to: {}", MsgType.INF)
+    m2 = Message("cri_login_error","Error logging into portal please verify that username, password, and URL is entered correctly. Username and password are case-sensitive", MsgType.ERR)
+    m3 = Message("cri_login_verify","Login Credentials Verified", MsgType.INF)
+    m4 = Message("cri_validate_fm","Validating Field Mapping...", MsgType.INF)
+    m5 = Message("cri_fm_error","The target field has not been specified for the source field: {}", MsgType.ERR)
+    m6 = Message("cri_config","Saving configuration file: {}", MsgType.INF)
+
 
     if portal_url:
         if "https://" not in portal_url[0:8] and "http://" not in portal_url[0:7]:
             portal_url = "https://" + portal_url
         try:
-            arcpy.AddMessage("Verifying Login Credentials to: \n" + str(portal_url))
+            printMessage(m1, str(portal_url))
             GIS(portal_url, username, password)
         except:
-            arcpy.AddError("{}\n".format(e8))
+            printMessage(m2)
             sys.exit(1)
-        arcpy.AddMessage("Login Credentials Verified")
+        printMessage(m3)
 
     target_features = getFullPath(target_features)    
 
     errorCount = 0
     if fieldmap_option == "Use Field Mapping":
-        arcpy.AddMessage('Validating Field Mapping...\n')
+        printMessage(m4)
         fms = processFieldMap(fieldmap)
         if address_field not in fms:
-            arcpy.AddError("The target field for the address field {} has not been specified in the field map".format(address_field))
+            printMessage(m5,address_field)
             errorCount += 1
         else:
             address_field = fms[address_field]["target"]
         if city_field and city_field not in fms:
-            arcpy.AddError("The target field for the city field {} has not been specified in field map".format(city_field))
+            printMessage(m5,city_field)
             errorCount += 1
         else:
             if city_field:
                 city_field = fms[city_field]["target"]
         if state_field and state_field not in fms:
-            arcpy.AddError("The target field for the state field {} has not been specified in the field map".format(state_field))
+            printMessage(m5,state_field)
             errorCount += 1
         else:
             if state_field:
                 state_field = fms[state_field]["target"]
         if zip_field and zip_field not in fms:
-            arcpy.AddError("The target field for the zip field {} has not been specified in the field map".format(zip_field))
+            printMessage(m5,zip_field)
             errorCount += 1
         else:
             if zip_field:
                 zip_field = fms[zip_field]["target"]
         if summary_field:
             if summary_field not in fms:
-                arcpy.AddError("The target field for the summary field {} has not been specified in the field map".format(summary_field))
+                printMessage(m5,summary_field)
                 errorCount += 1
             else:
                 summary_field = fms[summary_field]["target"]
         if report_date_field not in fms:
-            arcpy.AddError("The target field for the Indicent Date field {} has not been specified in the field map".format(report_date_field))
+            printMessage(m5,report_date_field)
             errorCount += 1
         else:
             report_date_field = fms[report_date_field]["target"]
         if incident_id not in fms:
-            arcpy.AddError("The target field for the Indicent ID field {} has not been specified in the field map".format(incident_id))
+            printMessage(m5,incident_id)
             errorCount += 1
         else:
             incident_id = fms[incident_id]["target"]
@@ -161,7 +168,6 @@ def main(config_file,
     timestamp_format = timestamp_format.replace("%","%%")
 
     config = configparser.RawConfigParser()
-    arcpy.AddMessage('Configuration file created')
 
     # Add general parameters
     section = 'GENERAL'
@@ -202,10 +208,8 @@ def main(config_file,
 
 
     with open(config_file, "w") as cfg:
-        arcpy.AddMessage('Saving configuration "{}"...'.format(config_file))
+        printMessage(m6,config_file)
         config.write(cfg)
-
-    arcpy.AddMessage('Done.')
 
 if __name__ == '__main__':
     argv = tuple(arcpy.GetParameterAsText(i)
