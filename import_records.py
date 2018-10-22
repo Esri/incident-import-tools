@@ -19,6 +19,7 @@ from time import mktime, time as t
 from calendar import timegm
 from arcgis.gis import GIS
 from arcgis.features import Feature, FeatureLayer
+from custommessaging import Message, MsgType, printMessage, retrieveMessage, validationMessage
 import time
 import json
 import arcpy
@@ -65,66 +66,71 @@ long_field = "X"
 temp_gdb_name = "temp_inc_data"
 
 # Log file messages
-l1 = "Run date:       {}\n"
-l2 = "User name:      {}\n"
-l3 = "Incidents:      {}\n"
-l4 = "Feature class:  {}\n"
-l5 = "Locator:        {}\n\n"
-l10 = "    Incidents summarized by {}\n"
-l11 = "       -- {}  # Incidents: {}\n"
+l1 = Message("ir_log_rundate", "Run date: {}", MsgType.INF)
+l2 = Message("ir_log_user", "User name: {}", MsgType.INF)
+l3 = Message("ir_log_incidents","Incidents: {}", MsgType.INF)
+l4 = Message("ir_log_fc","Feature class: {}", MsgType.INF)
+l5 = Message("ir_log_locator", "Locator: {}", MsgType.INF)
+l10 = Message("ir_log_incsumm","Incidents summarized by {}", MsgType.INF)
+l11 = Message("ir_log_catsumm","# of {} Incidents: {}", MsgType.INF)
 
 # Error messages
 gp_error = "GP ERROR"
 py_error = "ERROR"
 
-e1 = "{}:{} cannot be found.{}"
-e2 = "Field u'{}' does not exist in {}.\nValid fields are {}.{}"
-##e3 = "Provide a valid ArcMap document to publish a service."
-##e4 = "SD draft analysis errors:\n{}"
-e6 = "Feature service {} must store features with point geomentry."
-e8 = "Error logging into portal please verify that username, password, and URL is entered correctly.\nUsername and password are case-sensitive"
-e13 = "Provide a locator to geocode addresses. A locator service, local locator, or the World Geocode Service are all acceptable."
-e14 = "The locator values provided at the top of the import_publish_incidents.py script for 'loc_address_field', 'loc_city_field', 'loc_zip_field', and 'loc_state_field' must also be included in the list 'all_locator_fields'."
-e15 = "Field {} in spreadsheet {} contains a non-date value, or a value in a format other than {}."
-e16 = "Report date field required to identify duplicate records."
+e1 = Message("ir_filenotfound","{}:{} cannot be found.",MsgType.ERR)
+e2 = Message("ir_fieldnotexist","Field u'{}' does not exist in {}.", MsgType.ERR)
+e3 = Message("ir_validfields","Valid fields are {}", MsgType.ERR)
+e6 = Message("ir_pointgeom","Target feature service must store features with point geometry.", MsgType.ERR)
+e8 = Message("cri_login_error", "Error logging into portal please verify that username, password, and URL is entered correctly. Username and password are case-sensitive", MsgType.ERR)
+e13 = Message("ir_provide_locator","Provide a locator to geocode addresses. A locator service, local locator, or the World Geocode Service are all acceptable.", MsgType.ERR)
+e14 = Message("ir_locator_values","The locator values provided at the top of the import_records.py script for 'loc_address_field', 'loc_city_field', 'loc_zip_field', and 'loc_state_field' must also be included in the list 'all_locator_fields'.",MsgType.ERR)
+e15 = Message("ir_timeconversionerror","Field {} in source table contains a non-date value, or a value in a format other than {}.", MsgType.ERR)
+e16 = Message("ir_reportdatefield","Report date field required to identify duplicate records.",MsgType.ERR)
+e17 = Message("ir_sending_fail","Sending new features to service failed: {}", MsgType.ERR)
+e18 = Message("ir_send_edit_fail","Send edited features to service failed", MsgType.ERR)
+e19 = Message("ir_add_features_failed","Add features to service failed", MsgType.ERR)
+e20 = Message("ir_extent","The Source Table has features with coordinates that are not within the allowable extent of the Target Features coordinate system.",MsgType.ERR)
+e21 = Message("ir_nocommas","Verify that Latitude and Longitude Fields are formatted without commas or spaces",MsgType.ERR)
 
 # Warning messages
-w1 = "*** {} records could not be appended to {}.\nThese records have been copied to {}.\n\n"
-w3 = "The following records contain null values in required fields and were not processed:\n{}"
-w4 = "{} (problem field: {})"
-w5 = "\nTip: Many values are set in the script configuration file.\n"
-w6 = "*** {} records were not successfully geocoded.\nThese records have been copied to {}.\n\n"
-w7 = "*** {} records were not geocoded to an acceptable level of accuracy: {}\nThese records have been copied to {}.\n\n"
-w8 = "*** {} Attempted to project source records to match output, but unsuccessful"
+w1 = Message("ir_notappend","*** {} records could not be appended to target features. These records have been copied to {}.", MsgType.WRN)
+w3 = Message("ir_notprocessed","The following records contain null values in required fields and were not processed: {}", MsgType.WRN)
+w4 = Message("ir_prob_field","{} (problem field: {})", MsgType.WRN)
+w6 = Message("ir_nogeocode","*** {} records were not successfully geocoded.These records have been copied to {}.", MsgType.WRN)
+w7 = Message("ir_noacceptgeocode","*** {} records were not geocoded to an acceptable level of accuracy. These records have been copied to {}.", MsgType.WRN)
+w8 = Message("ir_projecterror","*** {} Attempted to project source records to match output, but unsuccessful", MsgType.WRN)
 
 # Informative messages
-m0 = "{} Logged into portal as {}...\n"
-m1 = "{}  Creating features...\n"
-m2 = "{} Mapping fields to field mapping object...\n"
-m3 = "{}  Geocoding incidents...\n"
-m4 = "{}  Appending {} updated incident(s) to {}...\n"
-##m5 = "{}  Publishing incidents...\n"
-m6 = "{} Copying source table to new field mapped table...\n"
-m8 = "{}  Completed import of {}\n"
-m13 = "{}  Updating older reports and filtering out duplicate records...\n"
-m14 = "  -- {} features updated in {}.\n\n"
-m15 = "  -- {} records will not be processed further. They may contain null values in required fields, they may be duplicates of other records in the spreadsheet, or they may be older than records that already exist in {}.\n\n"
-m16 = "  -- {} records successfully geocoded.\n\n"
-m17 = "  -- {} records found in spreadsheet {}.\n\n"
-m18 = "  -- {} records successfully appended to {}.\n\n"
-m19 = "{} records are not included in this summary because they did not contain a valid value in the summary field.\n"
+m0 = Message("ir_login","{} Logged into portal as {}...", MsgType.INF)
+m1 = Message("ir_createfeatures","{}  Creating features...", MsgType.INF)
+m2 = Message("ir_mapfields","{} Mapping fields to field mapping object...", MsgType.INF)
+m3 = Message("ir_geocode_incidents","{}  Geocoding incidents...", MsgType.INF)
+m4 = Message("ir_append_incidents","{}  Appending {} updated incident(s)...", MsgType.INF)
+m6 = Message("ir_fieldmapped","{} Copying source table to new field mapped table...", MsgType.INF)
+m8 = Message("ir_complete_import","{}  Completed import of {}", MsgType.INF)
+m13 = Message("ir_update_reports","{}  Updating older reports and filtering out duplicate records...", MsgType.INF)
+m14 = Message("ir_features_updated","  -- {} features updated in {}.", MsgType.INF)
+m15 = Message("ir_no_further_processing","  -- {} records will not be processed further. They may contain null values in required fields, they may be duplicates of other records in the spreadsheet, or they may be older than records that already exist in {}.", MsgType.INF)
+m16 = Message("ir_success_geocode","  -- {} records successfully geocoded.", MsgType.INF)
+m17 = Message("ir_records_found","  -- {} records found in source table {}.", MsgType.INF)
+m18 = Message("ir_success_append","  -- {} records successfully appended to {}.", MsgType.INF)
+m19 = Message("ir_summary_field","{} records are not included in this summary because they did not contain a valid value in the summary field.", MsgType.INF)
+m20 = Message("ir_no_features","0 features to add or edit", MsgType.INF)
+m21 = Message("ir_sending","Sending edited features {} to {}", MsgType.INF)
 
 # Environment settings
 # Set overwrite output option to True
 arcpy.env.overwriteOutput = True
 
-def messages(msg, log, msg_type = 0):
+def messages(msgObj, log, messageVar1=None, messageVar2=None):
     """Prints messages to the command line, log file, and GP tool dialog"""
-    log.write(msg)
+    msg = retrieveMessage(msgObj, messageVar1, messageVar2)
+    log.write(msg + '\n')
     #print(msg)
-    if msg_type == 0:
+    if msgObj.msgType == MsgType.INF:
         arcpy.AddMessage(msg)
-    elif msg_type == 1:
+    elif msgObj.msgType == MsgType.WRN:
         arcpy.AddWarning(msg)
     else:
         arcpy.AddError(msg)
@@ -170,9 +176,9 @@ def field_test(in_fc, in_fields, out_fields, required=False):
     for in_field in in_fields:
         if not in_field in out_fields:
             if required:
-                raise Exception(e2.format(in_field, in_fc, out_fields, ""))
+                raise Exception(retrieveMessage(e2,in_field, in_fc) + retrieveMessage(e3, out_fields))
             elif not in_field == "":
-                raise Exception(e2.format(in_field, in_fc, out_fields, ""))
+                raise Exception(retrieveMessage(e2,in_field, in_fc) + retrieveMessage(e3, out_fields))
             else:
                 pass
 
@@ -356,7 +362,7 @@ def remove_dups_fs(new_features, cur_features, fields, id_field, dt_field, loc_f
                         date1 = date1.replace(microsecond = 0)
                         date2 = date2.replace(microsecond = 0)
                     except TypeError:
-                        raise Exception(e15.format(dt_field, new_features, timestamp))
+                        raise Exception(retrieveMessage(e15,dt_field, timestamp))
 
                     # If new record older, delete the record from the table
                     if date1 < date2:
@@ -479,7 +485,7 @@ def compare_dates_fc(fields, dt_field, row, id_vals, timestamp):
             row_date = row[dt_index]
         # Fail if non-date value
         else:
-            raise Exception(e15.format(dt_field, "", timestamp))
+            raise Exception(retrieveMessage(e15,dt_field, timestamp))
 
     try:
         dict_date = dt.strptime(id_vals[dt_field],timestamp)
@@ -487,7 +493,7 @@ def compare_dates_fc(fields, dt_field, row, id_vals, timestamp):
         if isinstance(id_vals[dt_field], dt):
             dict_date = id_vals[dt_field]
         else:
-            raise Exception(e15.format(dt_field, "", timestamp))
+            raise Exception(retrieveMessage(e15,dt_field, timestamp))
 
     row_date = row_date.replace(microsecond= 0)
     dict_date = dict_date.replace(microsecond= 0)
@@ -651,7 +657,7 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
                         date_status = compare_dates_fc(fields,dt_field, fcrow, id_vals, timestamp)
 
                     except TypeError:
-                        raise Exception(e15.format(dt_field, new_features, timestamp))
+                        raise Exception(retrieveMessage(e15,dt_field, timestamp))
 
                     # If fc more recent, update the values in the dictionary
                     if date_status:
@@ -748,7 +754,7 @@ def editFeatures(features, fl, mode, log):
         except:
             numFeat = 0
         if numFeat == 0:
-            arcpy.AddMessage("0 features to add or edit")            
+            messages(m20,log)      
             return True # nothing to add is OK
         if numFeat > 100:
             chunk = 100
@@ -758,7 +764,7 @@ def editFeatures(features, fl, mode, log):
         while featuresProcessed < numFeat  and error == False:
             next = featuresProcessed + chunk
             featuresChunk = features[featuresProcessed:next]
-            msg = "Sending edited features " + str(featuresProcessed) + " to " + str(next)
+            msg = retrieveMessage(m21, str(featuresProcessed), str(next))
             arcpy.SetProgressorLabel(msg)
             if mode == 'add':
                 result = fl.edit_features(adds=featuresChunk)
@@ -767,7 +773,7 @@ def editFeatures(features, fl, mode, log):
             try:
                 if result['addResults'][-1]['error'] != None:
                     retval = False
-                    messages("Sending new features to service failed\n{}\n".format(result['addResults'][-1]['error']['description']),log,2)
+                    messages(e17, log, result['addResults'][-1]['error']['description'])
                     error = True
             except:
                 try:
@@ -775,12 +781,12 @@ def editFeatures(features, fl, mode, log):
                     retval = True
                 except:
                     retval = False
-                    arcpy.AddMessage("Send edited features to Service failed. Unfortunately you will need to re-run this tool.")
+                    messages(e18, log)
                     error = True
             featuresProcessed += chunk
     except:
         retval = False
-        arcpy.AddMessage("Add features to Service failed")
+        messages(e19, log)
         error = True
         pass
 
@@ -803,7 +809,7 @@ def main(config_file, *args):
         cfg = configparser.ConfigParser()
         cfg.read(config_file)
     else:
-        raise Exception(e1.format("Configuration file", config_file, ""))
+        raise Exception(retrieveMessage(e1,"Configuration file", config_file))
 
     # Get general configuration values
     orig_incidents = cfg.get('GENERAL', 'source_table')
@@ -823,7 +829,7 @@ def main(config_file, *args):
     if delete_duplicates in ('true', 'True', True):
         delete_duplicates = True
         if report_date_field == "":
-            raise Exception(e16)
+            raise Exception(retrieveMessage(e16))
 
     if delete_duplicates in ('false', 'False'):
         delete_duplicates = False
@@ -837,7 +843,7 @@ def main(config_file, *args):
         rptLog = join(reports, "{0}_{1}.log".format(fileNow, log_name))
 
     else:
-        raise Exception(e1.format("Report location", reports, w5))
+        raise Exception(retrieveMessage(e1,"Report location", reports))
 
     # Scratch workspace
     tempgdb = arcpy.env.scratchGDB
@@ -845,12 +851,12 @@ def main(config_file, *args):
     with open(rptLog, "w") as log:
         try:
             # Log file header
-            log.write(l1.format(fileNow))
-            log.write(l2.format(getpass.getuser()))
-            log.write(l3.format(incidents))
-            log.write(l4.format(inc_features))
+            log.write(retrieveMessage(l1,fileNow))
+            log.write(retrieveMessage(l2,getpass.getuser()))
+            log.write(retrieveMessage(l3,incidents))
+            log.write(retrieveMessage(l4,inc_features))
             if loc_type == "ADDRESSES":
-                log.write(l5.format(cfg.get('ADDRESSES', 'locator')))
+                log.write(retrieveMessage(l5,cfg.get('ADDRESSES', 'locator')))
 
             portalURL = cfg.get('SERVICE', 'portal_url')
             username = cfg.get('SERVICE', 'username')
@@ -866,20 +872,20 @@ def main(config_file, *args):
                 try:
                     portal = GIS(portalURL, username, password)
                 except RunTimeError:
-                    raise Exception(e8)
+                    raise Exception(retrieveMessage(e8))
 
-                messages(m0.format(timeNow, str(portal.properties.user.username)), log)
+                messages(m0,log, timeNow, str(portal.properties.user.username))
 
                 fl = FeatureLayer(url=inc_features,gis=portal)
                     
                 if not fl.properties.geometryType == 'esriGeometryPoint':
-                    raise Exception(e6.format(inc_features))
+                    raise Exception(retrieveMessage(e6))
 
             timeNow = dt.strftime(dt.now(), time_format)
             
             # Create Field Mapping Object and Map incidents to new table with new schema    
             if fieldmap_option == "Use Field Mapping":
-                messages(m2.format(timeNow), log)
+                messages(m2, log, timeNow)
                 fieldmap = processFieldMap(fieldmap)
                 afm = arcpy.FieldMappings()
                 for key, value in fieldmap.items():
@@ -889,7 +895,7 @@ def main(config_file, *args):
                     tempFieldMap.addInputField(incidents, key)
                     afm.addFieldMap(tempFieldMap)  
                 timeNow = dt.strftime(dt.now(), time_format)
-                messages(m6.format(timeNow), log)
+                messages(m6, log,timeNow)
                 incidents = arcpy.TableToTable_conversion(incidents, tempgdb, "schemaTable",field_mapping=afm)
 
             # Identify field names in both fc and csv
@@ -919,14 +925,14 @@ def main(config_file, *args):
                 opFields = [city_field, state_field, zip_field, summary_field, report_date_field]
 
                 if locator == "":
-                    raise Exception(e13)
+                    raise Exception(retrieveMessage(e13))
 
                 # Test geolocator fields
                 loc_address_fields = [loc_address_field, loc_city_field, loc_zip_field, loc_state_field]
                 for a in loc_address_fields:
                     if not a == "":
                         if not a in all_locator_fields:
-                            raise Exception(e14)
+                            raise Exception(retrieveMessage(e14))
 
             # If data has coordinate values
             else:
@@ -989,18 +995,17 @@ def main(config_file, *args):
 
             total_records = len(field_vals(incidents,id_field))
 
-            messages(m17.format(total_records, orig_incidents), log)
+            messages(m17, log,total_records, orig_incidents)
 
             if not summary_field == "":
                 SumVals = field_vals(incidents, summary_field)
                 listSumVals = [val for val in SumVals if val != None]
 
                 if not len(SumVals) == len(listSumVals):
-                    print(m19.format(len(SumVals)-len(listSumVals)))
-                    log.write(m19.format(len(SumVals)-len(listSumVals)))
+                    messages(m19, log, len(SumVals)-len(listSumVals))
                 listSumVals.sort()
 
-                log.write(l10.format(summary_field))
+                log.write(retrieveMessage(l10,summary_field))
                 dateCount = 1
                 i = 0
                 n = len(listSumVals)
@@ -1011,10 +1016,10 @@ def main(config_file, *args):
                         if listSumVals[i] == listSumVals[i + 1]:
                             dateCount += 1
                         else:
-                            log.write(l11.format(listSumVals[i], dateCount))
+                            log.write(retrieveMessage(l11,listSumVals[i], dateCount))
                             dateCount = 1
                     except:
-                        log.write(l11.format(listSumVals[i], dateCount))
+                        log.write(retrieveMessage(l11,listSumVals[i], dateCount))
                     i += 1
 
                 log.write("\n")
@@ -1022,7 +1027,7 @@ def main(config_file, *args):
             # Remove duplicate incidents
             if delete_duplicates:
                 timeNow = dt.strftime(dt.now(), time_format)
-                messages(m13.format(timeNow), log)
+                messages(m13, log, timeNow)
 
                 if target_feat_type == "service":
                     incidents, req_nulls, countUpdate, countDelete = remove_dups_fs(incidents,
@@ -1044,13 +1049,13 @@ def main(config_file, *args):
 
                 if not req_nulls == "":
                     req_nulls = "{}\n".format(req_nulls)
-                    messages(w3.format(req_nulls), log, 1)
+                    messages(w3, log, req_nulls)
 
                 if not countUpdate == 0:
-                    messages(m14.format(countUpdate,inc_features), log)
+                    messages(m14, log, countUpdate,inc_features)
 
                 if countDelete > 0:
-                    messages(m15.format(countDelete,inc_features), log)
+                    messages(m15, log, countDelete,inc_features)
 
             # Create features
             tempFC = join(tempgdb, "tempDataLE")
@@ -1058,7 +1063,7 @@ def main(config_file, *args):
             # Create point features from spreadsheet
 
             timeNow = dt.strftime(dt.now(), time_format)
-            messages(m1.format(timeNow), log)
+            messages(m1, log, timeNow)
 
             records_to_add = 0
             for r in arcpy.da.SearchCursor(incidents, id_field):
@@ -1068,7 +1073,7 @@ def main(config_file, *args):
                 if loc_type == "ADDRESSES":
 
                     timeNow = dt.strftime(dt.now(), time_format)
-                    messages(m3.format(timeNow), log)
+                    messages(m3, log, timeNow)
 
                     # Geocode the incidents
                     arcpy.GeocodeAddresses_geocoding(incidents,
@@ -1104,21 +1109,21 @@ def main(config_file, *args):
                                                     False, True)
                         
                         if not countUnmatch == 0:
-                            messages(w6.format(countUnmatch, rptUnmatch), log, 1)
+                            messages(w6, log, countUnmatch, rptUnmatch)
 
                         # Incidents that were not matched to an acceptable accuracy
                         countMatch = sort_records(tempFC, unmatchwriter,
                                                     locIndex, addrOK, False, True)
 
                         if not countMatch == 0:
-                            messages(w7.format(countMatch, addrOK, rptUnmatch), log, 1)
+                            messages(w7, log, countMatch, rptUnmatch)
 
                         countTrueMatch = len(field_vals(tempFC, "OBJECTID"))
 
                         #Change records to add value to successful geocodes # for reporting in log
                         records_to_add = countTrueMatch
 
-                        messages(m16.format(countTrueMatch, inc_features), log)
+                        messages(m16, log, countTrueMatch, inc_features)
 
                 else:
                     # Create temporary output storage
@@ -1137,7 +1142,7 @@ def main(config_file, *args):
                 #Checking if records to add value has been changed by geocoding results countTrueMatch
                 if records_to_add > 0:
                     timeNow = dt.strftime(dt.now(), time_format)
-                    messages(m4.format(timeNow, records_to_add ,inc_features), log)
+                    messages(m4, log, timeNow, records_to_add)
 
                     arcpy.SetProgressor("default", "Preparing features to be sent to Target")
 
@@ -1192,7 +1197,7 @@ def main(config_file, *args):
                                                 appendwriter.writerow(errorrow)
                                                 
                                                 # Add id and field to issue list
-                                                errorRecords.append(w4.format(errorrow[record], "Coordinates"))
+                                                errorRecords.append(retrieveMessage(w4,errorrow[record], "Coordinates"))
                                                 appendRows.deleteRow()
                                             else:
                                                 countAppend += 1
@@ -1200,9 +1205,9 @@ def main(config_file, *args):
 
                                 # If issues were reported, print them
                                 if len(errorRecords) != 0:
-                                    messages(w1.format(len(errorRecords), inc_features, rptNoAppend), log, 1)
+                                    messages(w1, log, len(errorRecords), rptNoAppend)
 
-                                messages(m18.format(countAppend, inc_features), log)
+                                messages(m18, log, countAppend, inc_features)
                                         
                         # Reproject the features
                         try:
@@ -1295,7 +1300,7 @@ def main(config_file, *args):
                                 tempFC = proj_out
                             except arcpy.ExecuteError:
                                 timeNow = dt.strftime(dt.now(), time_format)
-                                messages(w8.format(timeNow), log, 1)
+                                messages(w8, log, timeNow)
 
                         # Append geocode results to fc
                         rptNoAppend = join(reports, "{0}_{1}.csv".format(fileNow, noappend_name))
@@ -1369,13 +1374,13 @@ def main(config_file, *args):
                                             appendwriter.writerow(csvrow)
 
                                             # Add id and field to issue list
-                                            errorRecords.append(w4.format(csvrow[record], badfield))
+                                            errorRecords.append(retrieveMessage(w4,csvrow[record], badfield))
 
                         # If issues were reported, print them
                         if len(errorRecords) != 0:
-                            messages(w1.format(len(errorRecords), inc_features, rptNoAppend), log, 1)
+                            messages(w1, log, len(errorRecords), rptNoAppend)
 
-                        messages(m18.format(countAppend, inc_features), log)
+                        messages(m18, log, countAppend, inc_features)
 
                         del incrows, csvrows
 
@@ -1390,14 +1395,13 @@ def main(config_file, *args):
             log.write("{}\n".format(arcpy.GetMessages(2)))
 
             if "invalid extent for output coordinate system" in arcpy.GetMessages():
-                arcpy.AddError("The Source Table has features with coordinates that are not within the allowable extent of the Target Features coordinate system.")
+                messages(e20,log)
 
             for msg in range(0, arcpy.GetMessageCount()):
                 if arcpy.GetSeverity(msg) == 2:
                     code = arcpy.GetReturnCode(msg)
                     if code == 55:
-                        arcpy.AddError("Verify that Latitude and Longitude Fields are formatted without commas or spaces")
-                        log.write("Verify that Latitude and Longitude Fields are formatted without commas or spaces")
+                        messages(e21,log)
                     print("Code: {}".format(code))
                     print("Message: {}".format(arcpy.GetMessage(msg)))
 
@@ -1432,7 +1436,7 @@ def main(config_file, *args):
                 pass
 
             timeNow = dt.strftime(dt.now(), time_format)
-            messages(m8.format(timeNow, orig_incidents), log)
+            messages(m8, log, timeNow, orig_incidents)
 
 if __name__ == '__main__':
     argv = tuple(arcpy.GetParameterAsText(i)
