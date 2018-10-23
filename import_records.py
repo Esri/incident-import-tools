@@ -851,12 +851,12 @@ def main(config_file, *args):
     with open(rptLog, "w") as log:
         try:
             # Log file header
-            log.write(retrieveMessage(l1,fileNow))
-            log.write(retrieveMessage(l2,getpass.getuser()))
-            log.write(retrieveMessage(l3,incidents))
-            log.write(retrieveMessage(l4,inc_features))
+            log.write(retrieveMessage(l1,fileNow) + '\n')
+            log.write(retrieveMessage(l2,getpass.getuser())+ '\n')
+            log.write(retrieveMessage(l3,incidents)+ '\n')
+            log.write(retrieveMessage(l4,inc_features)+ '\n')
             if loc_type == "ADDRESSES":
-                log.write(retrieveMessage(l5,cfg.get('ADDRESSES', 'locator')))
+                log.write(retrieveMessage(l5,cfg.get('ADDRESSES', 'locator'))+ '\n')
 
             portalURL = cfg.get('SERVICE', 'portal_url')
             username = cfg.get('SERVICE', 'username')
@@ -1005,7 +1005,7 @@ def main(config_file, *args):
                     messages(m19, log, len(SumVals)-len(listSumVals))
                 listSumVals.sort()
 
-                log.write(retrieveMessage(l10,summary_field))
+                log.write(retrieveMessage(l10,summary_field)+ '\n')
                 dateCount = 1
                 i = 0
                 n = len(listSumVals)
@@ -1016,10 +1016,10 @@ def main(config_file, *args):
                         if listSumVals[i] == listSumVals[i + 1]:
                             dateCount += 1
                         else:
-                            log.write(retrieveMessage(l11,listSumVals[i], dateCount))
+                            log.write(retrieveMessage(l11,listSumVals[i], dateCount)+ '\n')
                             dateCount = 1
                     except:
-                        log.write(retrieveMessage(l11,listSumVals[i], dateCount))
+                        log.write(retrieveMessage(l11,listSumVals[i], dateCount)+ '\n')
                     i += 1
 
                 log.write("\n")
