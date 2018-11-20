@@ -44,5 +44,5 @@ def retrieveMessage(msgObj, messageVar1=None, messageVar2=None):
         message = message.replace("%2","{1}")
     except:
         message = msgObj.msg
-    message = msgObj.msg.format(messageVar1, messageVar2)
+    message = message.format(messageVar1, messageVar2)
     return message
