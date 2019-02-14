@@ -31,7 +31,7 @@ from os import rename, walk
 
 # Locator input fields
 #       World Geocode Service values are available here:
-#       http://resources.arcgis.com/en/help/arcgis-rest-api/#/Multiple_input_field_geocoding/02r30000001p000000/
+#       http://links.esri.com/localgovernment/help/geocodecandidates
 all_locator_fields = ["Address", "Address2", "Address3", "Neighborhood", "City", "Subregion", "Region", "Postal", "PostalExt", "CountryCode"]
 
 loc_address_field = "Address" # Field in all_locator_fields for street address (required)
