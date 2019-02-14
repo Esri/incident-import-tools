@@ -640,6 +640,12 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
             else:
                 where_clause = """{} = '{}'""".format(id_field, att_dict.keys()[0])
 
+        desc = arcpy.Describe(cur_features)
+        if desc.isVersioned:
+            editor = arcpy.da.Editor(desc.path)
+            editor.startEditing()
+            editor.startOperation()
+
         with arcpy.da.UpdateCursor(cur_features, fields, where_clause) as fcrows:
             for fcrow in fcrows:
 
@@ -696,6 +702,10 @@ def remove_dups_fc(new_features, cur_features, fields, id_field, dt_field, loc_f
 
                 except KeyError:
                     pass
+        if desc.isVersioned:
+            editor.stopOperation()
+            editor.stopEditing(True)
+            del editor
 
     # Clean up new data to reflect updates from current data
     with arcpy.da.UpdateCursor(tempTable, fields) as updaterows:
@@ -1310,7 +1320,13 @@ def main(config_file, *args):
                             geocodefieldnames.append("SHAPE@XY")
                             searchnames = geocodefieldnames
                         else:
-                            searchnames = copyfieldnames                                           
+                            searchnames = copyfieldnames
+
+                        desc = arcpy.Describe(inc_features)
+                        if desc.isVersioned:
+                            editor = arcpy.da.Editor(desc.path)
+                            editor.startEditing()
+                            editor.startOperation()                                            
 
                         with arcpy.da.SearchCursor(tempFC, searchnames) as csvrows:
                             with arcpy.da.InsertCursor(inc_features, copyfieldnames) as incrows:
@@ -1383,6 +1399,11 @@ def main(config_file, *args):
                         messages(m18, log, countAppend, inc_features)
 
                         del incrows, csvrows
+
+                        if desc.isVersioned:
+                            editor.stopOperation()
+                            editor.stopEditing(True)
+                            del editor
 
         except arcpy.ExecuteError:
             print("{}\n{}\n".format(gp_error, arcpy.GetMessages(2)))
