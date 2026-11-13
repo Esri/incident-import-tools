@@ -1,3 +1,9 @@
+> [!NOTE]
+> This repository is now in an archived state.
+> Functionality in Record Import Tools has been replaced by Update Features With Incident Records tool in the Crime Analysis and Safety Tools Toolbox installed with ArcGIS Pro
+---
+
+
 # Record Import Tools
 
 Toolbox and scripts for importing tables into an existing feature class within a web layer or file geodatabase.  
